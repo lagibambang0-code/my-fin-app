@@ -1,0 +1,219 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-jakarta);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tema = mode × palet warna.
+ *
+ * - Mode (`Terang` default / `Gelap`) menentukan permukaan, teks, dan border.
+ * - Palet (`Teal` default / `Samudra` / `Lavender`) hanya menggeser hue aksen
+ *   lewat `--palette-hue`; lightness & chroma-nya dibuat sama seperti Teal
+ *   sehingga permukaan tetap netral dan tiap palet tetap nyaman dibaca baik di
+ *   mode Terang maupun Gelap.
+ *
+ * Preferensi disimpan terpisah: `dompetku:mode` + `dompetku:palette`
+ * (lihat components/theme-settings.tsx dan bootstrap di app/layout.tsx).
+ * ------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+  /* Geometri BottomNav.
+     `--nav-height` = tinggi bilah nav itu sendiri (tanpa safe-area).
+     `--nav-offset` = jarak dari tepi bawah viewport ke tepi atas bilah nav —
+     dipakai konten halaman & FAB supaya tidak pernah tertutup nav.
+     Keduanya diukur ulang saat runtime oleh components/bottom-nav.tsx, karena
+     pada layar md+ bilah nav ter-inset dari viewport (shell membulat) dan
+     safe-area berbeda tiap perangkat. Nilai di bawah hanya fallback paint
+     pertama. */
+  --nav-height: 81px;
+  --nav-offset: calc(var(--nav-height) + env(safe-area-inset-bottom));
+
+  /* Palet default (Teal); ditimpa oleh [data-palette='…'] di bawah. */
+  --palette-hue: 168;
+  --palette-chroma: 0.12;
+
+  /* --- Mode Terang (default) --- */
+  --background: oklch(0.984 0.004 var(--palette-hue));
+  --foreground: oklch(0.21 0.015 var(--palette-hue));
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.015 var(--palette-hue));
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.015 var(--palette-hue));
+  --primary: oklch(0.52 var(--palette-chroma) var(--palette-hue));
+  --primary-foreground: oklch(0.99 0.005 var(--palette-hue));
+  --secondary: oklch(0.955 0.012 var(--palette-hue));
+  --secondary-foreground: oklch(0.32 0.07 var(--palette-hue));
+  --muted: oklch(0.96 0.006 var(--palette-hue));
+  --muted-foreground: oklch(0.55 0.015 var(--palette-hue));
+  --accent: oklch(0.935 0.03 var(--palette-hue));
+  --accent-foreground: oklch(0.3 0.07 var(--palette-hue));
+  --destructive: oklch(0.6 0.2 25);
+  --success: oklch(0.6 0.14 155);
+  --success-foreground: oklch(0.99 0 0);
+  --border: oklch(0.905 0.01 var(--palette-hue));
+  --input: oklch(0.905 0.01 var(--palette-hue));
+  --ring: oklch(0.52 var(--palette-chroma) var(--palette-hue));
+  --chart-1: oklch(0.52 var(--palette-chroma) var(--palette-hue));
+  --chart-2: oklch(0.7 0.13 75);
+  --chart-3: oklch(0.6 0.2 25);
+  --chart-4: oklch(0.55 0.12 250);
+  --chart-5: oklch(0.75 0.1 var(--palette-hue));
+  --radius: 0.875rem;
+  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.04);
+  --shadow: 0 1px 3px 0 oklch(0 0 0 / 0.07), 0 1px 2px -1px oklch(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px oklch(0 0 0 / 0.08), 0 2px 4px -2px oklch(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px oklch(0 0 0 / 0.09), 0 4px 6px -4px oklch(0 0 0 / 0.06);
+  --shadow-xl: 0 20px 25px -5px oklch(0 0 0 / 0.09), 0 8px 10px -6px oklch(0 0 0 / 0.06);
+  --glass-bg: oklch(1 0 0 / 0.72);
+  --glass-border: oklch(0 0 0 / 0.07);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* --- Mode Gelap --- */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.16 0.012 var(--palette-hue));
+  --foreground: oklch(0.96 0.005 var(--palette-hue));
+  --card: oklch(0.205 0.014 var(--palette-hue));
+  --card-foreground: oklch(0.96 0.005 var(--palette-hue));
+  --popover: oklch(0.205 0.014 var(--palette-hue));
+  --popover-foreground: oklch(0.96 0.005 var(--palette-hue));
+  --primary: oklch(0.72 var(--palette-chroma) var(--palette-hue));
+  --primary-foreground: oklch(0.18 0.03 var(--palette-hue));
+  --secondary: oklch(0.27 0.03 var(--palette-hue));
+  --secondary-foreground: oklch(0.9 0.04 var(--palette-hue));
+  --muted: oklch(0.25 0.014 var(--palette-hue));
+  --muted-foreground: oklch(0.7 0.015 var(--palette-hue));
+  --accent: oklch(0.28 0.035 var(--palette-hue));
+  --accent-foreground: oklch(0.92 0.04 var(--palette-hue));
+  --destructive: oklch(0.68 0.19 22);
+  --success: oklch(0.72 0.14 155);
+  --success-foreground: oklch(0.18 0.03 180);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.72 var(--palette-chroma) var(--palette-hue));
+  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --shadow: 0 1px 3px 0 oklch(0 0 0 / 0.35), 0 1px 2px -1px oklch(0 0 0 / 0.25);
+  --shadow-md: 0 4px 6px -1px oklch(0 0 0 / 0.35), 0 2px 4px -2px oklch(0 0 0 / 0.25);
+  --shadow-lg: 0 10px 15px -3px oklch(0 0 0 / 0.35), 0 4px 6px -4px oklch(0 0 0 / 0.25);
+  --shadow-xl: 0 20px 25px -5px oklch(0 0 0 / 0.35), 0 8px 10px -6px oklch(0 0 0 / 0.25);
+  --glass-bg: oklch(0.205 0.014 var(--palette-hue) / 0.65);
+  --glass-border: oklch(1 0 0 / 0.08);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+.light {
+  color-scheme: light;
+}
+
+/* --- Palet warna: hanya hue aksen yang berbeda dari Teal --- */
+[data-palette='teal'] {
+  --palette-hue: 168;
+  --palette-chroma: 0.12;
+}
+
+[data-palette='ocean'] {
+  --palette-hue: 235;
+  --palette-chroma: 0.14;
+}
+
+[data-palette='lavender'] {
+  --palette-hue: 300;
+  --palette-chroma: 0.14;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid var(--glass-border);
+  }
+  .shadow-soft {
+    box-shadow: var(--shadow);
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-md);
+  }
+  .ease-out-quart {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+}
