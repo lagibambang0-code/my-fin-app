@@ -53,7 +53,7 @@ export function RecurringSheet({ open, value, onChange, onClose }: RecurringShee
         testId="recurring-sheet"
         label="Berulang/cicil"
       >
-        <div className="mx-auto w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-xl">
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-0">
           <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
             <h2 className="text-base font-bold">Berulang/cicil</h2>
             <button
@@ -169,8 +169,8 @@ export function RecurringSheet({ open, value, onChange, onClose }: RecurringShee
         </div>
       </Overlay>
 
-      <FullScreenSheet open={stage === 'installment'} testId="installment-screen">
-        <header className="flex items-center gap-2 border-b px-3 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+      <FullScreenSheet open={stage === 'installment'} onClose={() => setStage('menu')} testId="installment-screen" variant="drawer">
+        <header className="flex items-center gap-2 border-b px-3 py-2.5">
           <Button
             variant="ghost"
             size="icon-sm"

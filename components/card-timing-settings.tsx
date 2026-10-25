@@ -4,25 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import { getSettingByKey, setSetting } from '@/lib/db'
 
-const OPTIONS = [
-  {
-    value: '1',
-    label: 'Waktu penggunaan',
-    description: 'Pengeluaran kartu dibebankan saat transaksi terjadi',
-  },
-  {
-    value: '0',
-    label: 'Lump sum',
-    description: 'Pengeluaran kartu dibebankan sekaligus pada tanggal pembayaran',
-  },
-] as const
 
 /** "Cara catat pengeluaran kartu" (PRD-08 §3.2.10). Default: Lump sum. */
 export function CardTimingSettings() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [value, setValue] = useState('0')
 
   useEffect(() => {
@@ -51,18 +41,29 @@ export function CardTimingSettings() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Kelola aset
+              {t.settings.manageAsset}
             </p>
             <h1 className="truncate text-lg font-bold tracking-tight">
-              Cara catat pengeluaran kartu
+              {t.asset.cardAccounting}
             </h1>
           </div>
         </div>
       </header>
 
       <div className="flex flex-1 flex-col px-4 md:px-10">
-        <div role="radiogroup" aria-label="Cara catat pengeluaran kartu" className="space-y-2">
-          {OPTIONS.map((opt) => {
+        <div role="radiogroup" aria-label={t.asset.cardAccounting} className="space-y-2">
+          {[
+            {
+              value: '1',
+              label: t.asset.cardTimingUse,
+              description: t.asset.cardTimingUseDesc,
+            },
+            {
+              value: '0',
+              label: t.asset.cardTimingLump,
+              description: t.asset.cardTimingLumpDesc,
+            },
+          ].map((opt) => {
             const selected = value === opt.value
             return (
               <button

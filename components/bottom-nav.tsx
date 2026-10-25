@@ -10,6 +10,7 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 
 type NavItem = { href: string; label: string; icon: LucideIcon }
@@ -24,6 +25,14 @@ const NAV_ITEMS: NavItem[] = [
 export function BottomNav() {
   const pathname = usePathname()
   const navRef = useRef<HTMLElement>(null)
+  const { t } = useTranslation()
+
+  const navItems = [
+    { href: '/transactions', label: t.nav.transaction, icon: ArrowLeftRight },
+    { href: '/stats', label: t.nav.stats, icon: ChartPie },
+    { href: '/accounts', label: t.nav.asset, icon: Wallet },
+    { href: '/more', label: t.nav.more, icon: Ellipsis },
+  ]
 
   /**
    * Publish the measured nav geometry as CSS variables.
@@ -75,7 +84,7 @@ export function BottomNav() {
         )}
       >
         <ul className="mx-auto grid max-w-lg grid-cols-4 gap-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {navItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`)
             return (
               <li key={href}>

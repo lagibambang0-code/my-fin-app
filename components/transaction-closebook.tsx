@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, FileSpreadsheet, Wallet, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { Overlay } from '@/components/ui/overlay'
 import { cn } from '@/lib/utils'
 import type { Budget, BudgetAmount, Transaction } from '@/lib/db'
@@ -40,6 +41,7 @@ export function TransactionCloseBook({
   cardAssetUids,
 }: CloseBookProps) {
   const router = useRouter()
+  const { t } = useTranslation()
   const [budgetOpen, setBudgetOpen] = useState(false)
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [budgetAmounts, setBudgetAmounts] = useState<BudgetAmount[]>([])
@@ -146,14 +148,14 @@ export function TransactionCloseBook({
         className="flex w-full items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <span className="min-w-0">
-          <span className="block text-sm font-medium">Anggaran</span>
+          <span className="block text-sm font-medium">{t.settings.budget}</span>
           <span
             className="block text-xs text-muted-foreground tabular-nums"
             data-testid="close-book-budget-value"
           >
             {statuses.length > 0
               ? `${formatCurrency(totals.spent, lookups.currency)} / ${formatCurrency(totals.amount, lookups.currency)}`
-              : 'Belum ada anggaran'}
+              : t.budget.emptyTitle}
           </span>
         </span>
         <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
@@ -161,7 +163,7 @@ export function TransactionCloseBook({
 
       <div className="rounded-2xl border bg-card">
         <Row
-          label="Periode Aset"
+          label={t.transaction.accountPeriod}
           value={periodLabel}
           testId="close-book-asset-period"
           icon={<Wallet aria-hidden="true" className="size-4 text-muted-foreground" />}
@@ -169,7 +171,7 @@ export function TransactionCloseBook({
         <div className="border-t px-4 py-3" data-testid="close-book-comparison">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm text-muted-foreground">
-              Perbandingan pengeluaran bulan lalu
+              {t.transaction.lastMonthComparison}
             </span>
             <span className="text-sm font-semibold tabular-nums">{percent}%</span>
           </div>
@@ -178,7 +180,7 @@ export function TransactionCloseBook({
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
-            aria-label="Perbandingan pengeluaran bulan lalu"
+            aria-label={t.transaction.lastMonthComparison}
             className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary"
           >
             <div
@@ -191,29 +193,29 @@ export function TransactionCloseBook({
 
       <div className="rounded-2xl border bg-card">
         <Row
-          label="Pengeluaran (Cash, Accounts)"
+          label={t.transaction.cashExpense}
           value={formatCurrency(cashExpense, lookups.currency)}
           testId="close-book-cash-expense"
         />
         <Row
-          label="Pengeluaran (Kartu)"
+          label={t.transaction.cardExpense}
           value={formatCurrency(cardExpense, lookups.currency)}
           testId="close-book-card-expense"
         />
         <Row
-          label="Transfer (Cash, Accounts →)"
+          label={t.transaction.transferTotal}
           value={formatCurrency(transferTotal, lookups.currency)}
           testId="close-book-transfer"
         />
         {transferFee > 0 && (
           <Row
-            label="Biaya transfer"
+            label={t.transaction.transferFee}
             value={formatCurrency(transferFee, lookups.currency)}
             testId="close-book-transfer-fee"
           />
         )}
         <Row
-          label="Total"
+          label={t.transaction.total}
           value={formatCurrency(current.total, lookups.currency)}
           testId="close-book-total"
           emphasis
@@ -228,7 +230,7 @@ export function TransactionCloseBook({
         onClick={exportExcel}
       >
         <FileSpreadsheet className="size-4" />
-        Ekspor Excel
+        {t.backup.exportExcel}
       </Button>
 
       <Overlay
@@ -238,7 +240,7 @@ export function TransactionCloseBook({
         label="Anggaran"
         testId="budget-notice"
       >
-        <div className="mx-auto w-full max-w-md rounded-2xl border bg-card p-4 shadow-xl">
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-base font-bold">Anggaran</h2>

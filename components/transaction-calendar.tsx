@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
+import { useTranslation } from '@/components/language-provider'
 import { Overlay } from '@/components/ui/overlay'
 import { cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/db'
@@ -25,8 +26,11 @@ export function TransactionCalendar({
   lookups: Lookups
   onOpen: (tx: Transaction) => void
 }) {
+  const { t, language } = useTranslation()
+  const weekHeaders = language === 'en'
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
-
   const totals = useMemo(() => totalsByDate(transactions), [transactions])
   const summary = useMemo(() => summarize(transactions), [transactions])
 
@@ -59,7 +63,7 @@ export function TransactionCalendar({
         </div>
 
         <div className="grid grid-cols-7 border-b bg-secondary/20">
-          {WEEK_HEADERS.map((label) => (
+          {weekHeaders.map((label) => (
             <span
               key={label}
               className="py-2 text-center text-[11px] font-medium text-muted-foreground"
@@ -115,7 +119,7 @@ export function TransactionCalendar({
         testId="calendar-day-dialog"
         label="Ringkasan hari"
       >
-        <div className="mx-auto flex max-h-[75vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border bg-card shadow-xl">
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-0">
           <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
             <div className="min-w-0">
               <h2 className="truncate text-base font-bold" data-testid="calendar-day-title">
@@ -124,7 +128,7 @@ export function TransactionCalendar({
                   : ''}
               </h2>
               <p className="text-xs text-muted-foreground">
-                Pendapatan {formatCurrency(selectedTotal.income, lookups.currency)} · Pengeluaran{' '}
+                {t.transaction.income} {formatCurrency(selectedTotal.income, lookups.currency)} · {t.transaction.expense}{' '}
                 {formatCurrency(selectedTotal.expense, lookups.currency)}
               </p>
             </div>
@@ -140,7 +144,7 @@ export function TransactionCalendar({
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             {selectedRows.length === 0 ? (
-              <TransactionsEmpty hint="Tidak ada transaksi pada tanggal ini." />
+              <TransactionsEmpty hint={t.transaction.emptyDate} />
             ) : (
               <div className="overflow-hidden rounded-xl border bg-card">
                 {selectedRows.map((tx) => (

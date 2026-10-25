@@ -1,12 +1,33 @@
 'use client'
 
-import { useCallback, useState } from 'react'
-import { Ellipsis, FileDown, FileUp, HelpCircle } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useTranslation } from '@/components/language-provider'
+import {
+  ChevronLeft,
+  Ellipsis,
+  FileDown,
+  FileSpreadsheet,
+  FileUp,
+  HardDrive,
+  HelpCircle,
+  RotateCcw,
+  X,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Overlay } from '@/components/ui/overlay'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { TabPage } from '@/components/tab-page'
-import { db } from '@/lib/db'
-import { initDB } from '@/lib/db'
+import {
+  db,
+  getAllAssets,
+  getAllCategories,
+  getAllTransactions,
+  initDB,
+} from '@/lib/db'
+import { formatDotRange, fromIso, monthBounds } from '@/lib/format'
+import { buildExcelHtml, downloadFile } from '@/lib/export'
 import { cn } from '@/lib/utils'
 
 export type BackupData = {
@@ -14,9 +35,7 @@ export type BackupData = {
   assets: boolean
   categories: boolean
   settings: boolean
-  memos: boolean
   tags: boolean
-  sms: boolean
   photos: boolean
   dateFrom?: string
   dateTo?: string
@@ -27,11 +46,21 @@ const DATA_TYPES: Array<{ key: keyof BackupData; label: string }> = [
   { key: 'assets', label: 'Aset' },
   { key: 'categories', label: 'Kategori' },
   { key: 'settings', label: 'Pengaturan' },
-  { key: 'memos', label: 'Memo' },
   { key: 'tags', label: 'Tag' },
-  { key: 'sms', label: 'SMS' },
   { key: 'photos', label: 'Foto' },
 ]
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex++
+  }
+  return `${size >= 100 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`
+}
 
 /**
  * "Cadangan" — backup/export/import screen.
@@ -47,16 +76,32 @@ export function BackupScreen() {
     assets: true,
     categories: true,
     settings: true,
-    memos: true,
     tags: true,
-    sms: true,
     photos: false,
   })
   const [backupJson, setBackupJson] = useState<string | null>(null)
   const [lastBackupInfo, setLastBackupInfo] = useState<{ timestamp: string; size: number } | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [confirmReset, setConfirmReset] = useState<'all' | 'transactions' | null>(null)
+  const [isExcelOpen, setIsExcelOpen] = useState(false)
+  const [storageInfo, setStorageInfo] = useState<{
+    usage: number
+    quota: number
+  } | null>(null)
 
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+      navigator.storage
+        .estimate()
+        .then((est) => {
+          if (est.usage !== undefined && est.quota !== undefined) {
+            setStorageInfo({ usage: est.usage, quota: est.quota })
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
   const toggleData = (key: keyof BackupData) => {
     setBackupData((prev) => ({ ...prev, [key]: !prev[key] }))
   }
@@ -81,9 +126,7 @@ export function BackupScreen() {
       const metaAsset = ['isSynced', 'syncTime', 'syncVersion']
       const metaCategory = ['isSynced', 'syncTime', 'syncVersion']
       const metaSetting = ['isDel', 'isSynced', 'syncTime', 'syncVersion']
-      const metaMemo = ['isSynced', 'syncTime', 'syncVersion']
       const metaTag = ['isSynced', 'syncTime', 'syncVersion']
-      const metaSms = ['isSynced', 'syncTime', 'syncVersion']
       const metaPhoto = ['isSynced', 'syncTime', 'syncVersion']
 
       if (backupData.transactions) {
@@ -118,32 +161,12 @@ export function BackupScreen() {
         backup.settings = stripMeta(settings, metaSetting)
       }
 
-      if (backupData.memos) {
-        const memos = await db.memos.toArray()
-        backup.memos = stripMeta(memos, metaMemo)
-      }
 
       if (backupData.tags) {
         const tags = await db.tags.toArray()
         backup.tags = stripMeta(tags, metaTag)
       }
 
-      if (backupData.sms) {
-        let smsMessages
-        if (backupData.dateFrom || backupData.dateTo) {
-          smsMessages = await db.smsMessages
-            .where('ZDATE')
-            .between(
-              backupData.dateFrom ? new Date(`${backupData.dateFrom}T00:00:00`).getTime() : 0,
-              backupData.dateTo ? new Date(`${backupData.dateTo}T23:59:59`).getTime() : Number.MAX_SAFE_INTEGER,
-              true, true,
-            )
-            .toArray()
-        } else {
-          smsMessages = await db.smsMessages.toArray()
-        }
-        backup.smsMessages = stripMeta(smsMessages, metaSms)
-      }
 
       if (backupData.photos) {
         const photos = await db.photos.toArray()
@@ -187,11 +210,8 @@ export function BackupScreen() {
       await db.assets.clear()
       await db.categories.clear()
       await db.settings.clear()
-      await db.memos.clear()
       await db.tags.clear()
-      await db.smsMessages.clear()
       await db.photos.clear()
-      await db.smsMacros.clear()
       await db.repeats.clear()
       await db.budgets.clear()
       await db.budgetAmounts.clear()
@@ -211,11 +231,8 @@ export function BackupScreen() {
       if (backupData.assets && data.assets) await bulkAddCIsDel(db.assets, data.assets)
       if (backupData.categories && data.categories) await bulkAddCIsDel(db.categories, data.categories)
       if (backupData.settings && data.settings) await bulkAdd(db.settings, data.settings, 'isDel')
-      if (backupData.memos && data.memos) await bulkAdd(db.memos, data.memos, 'isDel')
       if (backupData.tags && data.tags) await bulkAdd(db.tags, data.tags, 'isDel')
-      if (backupData.sms && data.smsMessages) await bulkAddCIsDel(db.smsMessages, data.smsMessages)
       if (backupData.photos && data.photos) await bulkAddCIsDel(db.photos, data.photos)
-      if (backupData.sms && data.smsMacros) await bulkAdd(db.smsMacros, data.smsMacros, 'isDel')
       if (data.repeats) await bulkAddCIsDel(db.repeats, data.repeats)
       if (data.budgets) await bulkAddCIsDel(db.budgets, data.budgets)
       if (data.budgetAmounts) await bulkAddCIsDel(db.budgetAmounts, data.budgetAmounts)
@@ -229,26 +246,219 @@ export function BackupScreen() {
       setExportError(error instanceof Error ? error.message : String(error))
     }
   }
+  const excelPeriods = useMemo(() => {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
+
+    const curMonthBounds = monthBounds(currentYear, currentMonth)
+    const prevMonthBounds = monthBounds(
+      currentMonth === 0 ? currentYear - 1 : currentYear,
+      currentMonth === 0 ? 11 : currentMonth - 1,
+    )
+    const curYearBounds = { start: new Date(currentYear, 0, 1), end: new Date(currentYear, 11, 31) }
+    const prevYearBounds = { start: new Date(currentYear - 1, 0, 1), end: new Date(currentYear - 1, 11, 31) }
+
+    return [
+      {
+        id: 'monthly',
+        title: `Bulanan (${formatDotRange(curMonthBounds.start, curMonthBounds.end)})`,
+        range: curMonthBounds,
+        filename: `dompetku-transaksi-${currentYear}-${String(currentMonth + 1).padStart(2, '0')}.xls`,
+      },
+      {
+        id: 'prev-month',
+        title: `Bulan lalu (${formatDotRange(prevMonthBounds.start, prevMonthBounds.end)})`,
+        range: prevMonthBounds,
+        filename: `dompetku-transaksi-${prevMonthBounds.start.getFullYear()}-${String(prevMonthBounds.start.getMonth() + 1).padStart(2, '0')}.xls`,
+      },
+      {
+        id: 'yearly',
+        title: `Tahunan (${formatDotRange(curYearBounds.start, curYearBounds.end)})`,
+        range: curYearBounds,
+        filename: `dompetku-transaksi-${currentYear}.xls`,
+      },
+      {
+        id: 'prev-year',
+        title: `Tahun lalu (${formatDotRange(prevYearBounds.start, prevYearBounds.end)})`,
+        range: prevYearBounds,
+        filename: `dompetku-transaksi-${currentYear - 1}.xls`,
+      },
+      {
+        id: 'all',
+        title: 'Semua',
+        range: null,
+        filename: 'dompetku-transaksi-semua.xls',
+      },
+    ]
+  }, [])
+
+  const handleExportExcel = async (period: (typeof excelPeriods)[number]) => {
+    try {
+      const [txs, cats, asts] = await Promise.all([
+        getAllTransactions(),
+        getAllCategories(),
+        getAllAssets(),
+      ])
+
+      const catMap = new Map(cats.map((c) => [c.uid, c]))
+      const assetMap = new Map(asts.map((a) => [a.uid, a]))
+
+      const filtered = txs.filter((tx) => {
+        if (!period.range) return true
+        const d = fromIso(tx.ZDATE)
+        return d >= period.range.start && d <= period.range.end
+      })
+
+      const heading = [
+        'Tanggal',
+        'Akun',
+        'Jenis',
+        'Kategori',
+        'Sub-kategori',
+        'Catatan',
+        'Jumlah',
+        'Memo',
+      ]
+
+      const rows = filtered.map((tx) => {
+        const cat = tx.ctgUid ? catMap.get(tx.ctgUid) : null
+        const isSub = cat?.STATUS === 2 && cat.pUid
+        const mainCatName = isSub ? catMap.get(cat.pUid!)?.NAME ?? cat.NAME : cat?.NAME ?? '—'
+        const subCatName = isSub ? cat.NAME : ''
+
+        let jenis = 'Pengeluaran'
+        if (tx.DO_TYPE === 'income') jenis = 'Pendapatan'
+        else if (tx.DO_TYPE === 'transfer') jenis = 'Transfer'
+
+        const assetName = tx.assetUid ? assetMap.get(tx.assetUid)?.NIC_NAME ?? '—' : '—'
+        const amount = Number(tx.AMOUNT_ACCOUNT ?? tx.ZMONEY) || 0
+        const signedAmount = tx.DO_TYPE === 'expense' ? -Math.abs(amount) : Math.abs(amount)
+
+        return [
+          tx.ZDATE,
+          assetName,
+          jenis,
+          mainCatName,
+          subCatName,
+          tx.ZCONTENT ?? '',
+          signedAmount,
+          tx.ZDATA ?? '',
+        ]
+      })
+
+      const html = buildExcelHtml([
+        {
+          title: `Pengelola Keuangan - ${period.title}`,
+          rows: [heading, ...rows],
+        },
+      ])
+
+      downloadFile(period.filename, 'application/vnd.ms-excel', html)
+      setIsExcelOpen(false)
+      toast.success(`File Excel (${period.title.split(' ')[0]}) berhasil diunduh!`)
+    } catch (err) {
+      console.error('Excel export failed:', err)
+      toast.error('Gagal mengekspor file Excel')
+    }
+  }
+  const router = useRouter()
+  const { t } = useTranslation()
 
   return (
-    <TabPage title="Cadangan" subtitle="Cadangkan & pulihkan data" icon={Ellipsis}>
+    <div className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-30 bg-background/80 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-4 backdrop-blur-xl md:px-10 md:pt-6 md:pb-8">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Kembali"
+            data-testid="backup-back"
+            onClick={() => router.back()}
+          >
+            <ChevronLeft className="size-5" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+              {t.nav.more}
+            </p>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.settings.backup}</h1>
+          </div>
+        </div>
+      </header>
+
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6 md:px-10 md:pb-8">
         <div className="rounded-xl border border-dashed px-3 py-3 text-xs text-pretty text-muted-foreground">
           <div className="flex items-start gap-2">
             <HelpCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
             <p>
-              Cadangkan semua data aplikasi ke dalam berkas JSON. Berkas ini dapat
-              diimpor kembali nanti atau digunakan untuk memindahkan data ke perangkat
-              lain. Pastikan untuk mencadangkan data secara berkala!
+              {t.backup.helpText}
             </p>
           </div>
         </div>
+
+        {storageInfo && (
+          <div
+            className="rounded-2xl border bg-card p-4 shadow-xs"
+            data-testid="backup-storage-card"
+          >
+            <div className="flex items-center justify-between gap-2 pb-2.5">
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <HardDrive className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold tracking-tight">
+                    {t.backup.storageTitle}
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    {formatBytes(Math.max(0, storageInfo.quota - storageInfo.usage))} {t.backup.storageAvailable.toLowerCase()}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                {((storageInfo.usage / storageInfo.quota) * 100).toFixed(1)}% {t.backup.storagePercent}
+              </span>
+            </div>
+
+            <div
+              role="progressbar"
+              aria-label={t.backup.storageTitle}
+              aria-valuenow={Math.round((storageInfo.usage / storageInfo.quota) * 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="h-2 w-full overflow-hidden rounded-full bg-secondary"
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-300"
+                style={{
+                  width: `${Math.max(1, Math.min(100, (storageInfo.usage / storageInfo.quota) * 100))}%`,
+                }}
+              />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t pt-2.5 text-xs">
+              <div>
+                <span className="block text-muted-foreground">{t.backup.storageUsed}</span>
+                <span className="font-semibold tabular-nums text-foreground" data-testid="backup-storage-used">
+                  {formatBytes(storageInfo.usage)}
+                </span>
+              </div>
+              <div>
+                <span className="block text-muted-foreground">{t.backup.storageAvailable}</span>
+                <span className="font-semibold tabular-nums text-foreground" data-testid="backup-storage-available">
+                  {formatBytes(Math.max(0, storageInfo.quota - storageInfo.usage))}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {lastBackupInfo ? (
           <div className="rounded-xl border bg-muted/50 px-4 py-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Cadangan terakhir</p>
+                <p className="text-sm font-medium">{t.backup.lastBackup}</p>
                 <p className="text-xs text-muted-foreground">
                   {new Date(lastBackupInfo.timestamp).toLocaleString()} · {Math.round(lastBackupInfo.size / 1024)} KB
                 </p>
@@ -259,7 +469,7 @@ export function BackupScreen() {
             </div>
           </div>
         ) : (
-          <p className="text-center py-6 text-sm text-muted-foreground">Belum pernah membuat cadangan</p>
+          <p className="text-center py-6 text-sm text-muted-foreground">{t.backup.noBackupYet}</p>
         )}
 
         {exportError && (
@@ -271,28 +481,100 @@ export function BackupScreen() {
         <div className="flex flex-col gap-3 pt-2">
           <Button className="h-12 gap-2 text-base" data-testid="backup-export" onClick={backupJson ? downloadJson : () => setIsOptionsOpen(true)}>
             <FileDown className="size-5" />
-            {backupJson ? 'Unduh Cadangan' : 'Ekspor Sekarang'}
+            {t.backup.backupJson}
           </Button>
-
           <div className="relative">
             <input type="file" accept=".json,application/json" onChange={handleImport} className="absolute inset-0 cursor-pointer opacity-0" id="import-file" data-testid="backup-import-input" />
             <label htmlFor="import-file" className={cn('flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-background text-sm font-medium transition-colors hover:bg-muted')} data-testid="backup-import">
               <FileUp className="size-5" />
-              Impor Cadangan
+              {t.backup.restoreJson}
             </label>
+          </div>
+
+          <Button
+            variant="outline"
+            className="h-12 w-full gap-2 text-sm font-medium"
+            data-testid="backup-export-excel"
+            onClick={() => setIsExcelOpen(true)}
+          >
+            <FileSpreadsheet className="size-5 text-emerald-600 dark:text-emerald-400" />
+            {t.backup.exportExcel}
+          </Button>
+        </div>
+
+        {/* Seksi Mulai ulang (T-45 / PRD-P-39) */}
+        <div className="flex flex-col gap-2 pt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+            {t.backup.restartSection}
+          </h3>
+          <div className="rounded-2xl border bg-card divide-y">
+            <button
+              type="button"
+              data-testid="backup-reset-transactions"
+              onClick={() => setConfirmReset('transactions')}
+              className="flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors hover:bg-destructive/10 text-destructive"
+            >
+              <div>
+                <span className="block text-sm font-medium">{t.backup.resetTransactionsOnly}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {t.backup.resetTransactionsOnlyDesc}
+                </span>
+              </div>
+              <RotateCcw className="size-4 shrink-0 text-destructive" />
+            </button>
+            <button
+              type="button"
+              data-testid="backup-reset-all"
+              onClick={() => setConfirmReset('all')}
+              className="flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors hover:bg-destructive/10 text-destructive"
+            >
+              <div>
+                <span className="block text-sm font-medium">{t.backup.resetAll}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {t.backup.resetAllDesc}
+                </span>
+              </div>
+              <RotateCcw className="size-4 shrink-0 text-destructive" />
+            </button>
           </div>
         </div>
       </div>
 
+      <ConfirmDialog
+        open={confirmReset !== null}
+        title={t.common.confirm}
+        description={
+          confirmReset === 'transactions'
+            ? t.backup.confirmResetTransactions
+            : t.backup.confirmResetAll
+        }
+        confirmLabel={t.common.yes}
+        cancelLabel={t.common.no}
+        destructive
+        onConfirm={async () => {
+          const mode = confirmReset
+          setConfirmReset(null)
+          if (mode === 'transactions') {
+            await db.transactions.clear()
+            toast.success(t.backup.resetSuccess)
+          } else if (mode === 'all') {
+            await db.delete()
+            await initDB()
+            window.location.href = '/transaksi'
+          }
+        }}
+        onCancel={() => setConfirmReset(null)}
+      />
+
       <Overlay open={isOptionsOpen} onClose={() => setIsOptionsOpen(false)} align="center" testId="backup-options-dialog">
         <div className="w-full max-w-sm rounded-2xl border bg-card p-5 shadow-xl">
-          <h2 className="text-lg font-bold">Pilih Data untuk Diekspor</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Pilih data yang akan disertakan dalam cadangan. Kosongkan rentang tanggal untuk mengekspor semua data.</p>
+          <h2 className="text-lg font-bold">{t.backup.selectDataToExport}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{t.backup.selectDataToExportDesc}</p>
 
           <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
-            {DATA_TYPES.map(({ key, label }) => (
+            {DATA_TYPES.map(({ key }) => (
               <label key={key} className="flex items-center justify-between rounded-lg border p-2 text-sm">
-                <span>{label}</span>
+                <span>{key in t.backup.types ? t.backup.types[key as keyof typeof t.backup.types] : key}</span>
                 <input type="checkbox" checked={!!backupData[key]} onChange={() => toggleData(key)} className="size-4 rounded border-primary accent-primary" />
               </label>
             ))}
@@ -321,6 +603,52 @@ export function BackupScreen() {
           </div>
         </div>
       </Overlay>
-    </TabPage>
+
+      {/* Dialog Pilihan Periode Ekspor Excel (T-44 / PRD-P-38) */}
+      <Overlay
+        open={isExcelOpen}
+        onClose={() => setIsExcelOpen(false)}
+        align="center"
+        testId="backup-excel-dialog"
+      >
+        <div className="w-full max-w-sm rounded-2xl border bg-card p-5 shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b">
+            <h2 className="text-base font-bold">{t.backup.excelDialogTitle}</h2>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Tutup"
+              onClick={() => setIsExcelOpen(false)}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+
+          <div className="mt-3 divide-y">
+            {excelPeriods.map((period) => (
+              <button
+                key={period.id}
+                type="button"
+                data-testid={`backup-excel-option-${period.id}`}
+                onClick={() => handleExportExcel(period)}
+              >
+                <span className="font-medium text-foreground">
+                  {period.id === 'this-month'
+                    ? `${t.backup.periods.thisMonth} (${formatDotRange(period.range!.start, period.range!.end)})`
+                    : period.id === 'prev-month'
+                    ? `${t.backup.periods.prevMonth} (${formatDotRange(period.range!.start, period.range!.end)})`
+                    : period.id === 'yearly'
+                    ? `${t.backup.periods.yearly} (${formatDotRange(period.range!.start, period.range!.end)})`
+                    : period.id === 'prev-year'
+                    ? `${t.backup.periods.prevYear} (${formatDotRange(period.range!.start, period.range!.end)})`
+                    : t.backup.periods.all}
+                </span>
+                <FileSpreadsheet className="size-4 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+        </div>
+      </Overlay>
+    </div>
   )
 }

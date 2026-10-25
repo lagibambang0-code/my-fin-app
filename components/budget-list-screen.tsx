@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, HelpCircle, Pencil, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { BudgetFormSheet } from '@/components/budget-form-sheet'
 import { BudgetMonthlySheet } from '@/components/budget-monthly-sheet'
 import {
@@ -14,7 +15,7 @@ import {
   deleteBudget,
   getAllBudgetAmounts,
   getBudgets,
-  getMainCategoriesByType,
+  getAllCategories,
   getMainCurrency,
   initDB,
 } from '@/lib/db'
@@ -24,6 +25,7 @@ import { formatCurrency } from '@/lib/format'
 /** "Pengaturan anggaran" (ConfigBudgetList) — PRD-04 §3.1. */
 export function BudgetListScreen() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [amounts, setAmounts] = useState<BudgetAmount[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -39,15 +41,15 @@ export function BudgetListScreen() {
 
   const load = useCallback(async () => {
     await initDB()
-    const [rows, overrides, cats, main] = await Promise.all([
+    const [rows, overrides, allCats, main] = await Promise.all([
       getBudgets(),
       getAllBudgetAmounts(),
-      getMainCategoriesByType(1),
+      getAllCategories(),
       getMainCurrency(),
     ])
     setBudgets(rows)
     setAmounts(overrides)
-    setCategories(cats)
+    setCategories(allCats)
     setCurrency(main ?? null)
     setLoaded(true)
   }, [])
@@ -75,9 +77,9 @@ export function BudgetListScreen() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Lainnya
+              {t.nav.more}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">Anggaran</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.budget.title}</h1>
           </div>
           <Button
             variant="ghost"
@@ -97,7 +99,7 @@ export function BudgetListScreen() {
       <div className="flex flex-1 flex-col gap-3 px-4 md:px-10" data-testid="budget-list">
         <div className="flex items-start gap-2 rounded-xl border border-dashed px-3 py-3 text-xs text-muted-foreground">
           <HelpCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          <p>Anda dapat memeriksa status anggaran di “tab transaksi &gt; total”.</p>
+          <p>{t.budget.helpText}</p>
         </div>
 
         {loaded && budgets.length === 0 ? (
@@ -105,7 +107,7 @@ export function BudgetListScreen() {
             className="py-16 text-center text-sm text-muted-foreground"
             data-testid="budget-empty"
           >
-            Tidak ada data
+            {t.common.noData}
           </p>
         ) : (
           <div className="space-y-1">
@@ -122,7 +124,7 @@ export function BudgetListScreen() {
                   className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span className="min-w-0 truncate text-sm font-medium">
-                    {budgetName(budget, categoryMap)}
+                    {budgetName(budget, categoryMap, t.budget.totalBudget)}
                   </span>
                   <span
                     className="shrink-0 text-sm font-semibold tabular-nums"

@@ -19,41 +19,32 @@ export function TransactionMonthly({
   transactions: Transaction[]
   lookups: Lookups
 }) {
-  const groups = useMemo(() => {
-    const list: {
-      month: number
-      rows: Transaction[]
-      total: number
-      weeks: { start: string; end: string; total: number }[]
-    }[] = []
+   const groups = useMemo(() => {
+     const list: {
+       month: number
+       rows: Transaction[]
+       total: number
+       weeks: { start: string; end: string; total: number }[]
+     }[] = []
 
-    for (let month = 0; month < 12; month += 1) {
-      const rows = transactions.filter((tx) => fromIso(tx.ZDATE).getMonth() === month)
-      if (rows.length === 0) continue
-      list.push({
-        month,
-        rows,
-        total: summarize(rows).total,
-        weeks: weeklyBreakdown(year, month, transactions),
-      })
-    }
-    return list.reverse()
-  }, [transactions, year])
+    const maxMonth = year === new Date().getFullYear() ? new Date().getMonth() : 11
 
-  const [expanded, setExpanded] = useState<number | null>(groups[0]?.month ?? null)
-  const yearTotal = useMemo(() => summarize(transactions).total, [transactions])
+    for (let month = 0; month <= maxMonth; month += 1) {
+       const rows = transactions.filter((tx) => fromIso(tx.ZDATE).getMonth() === month)
+       list.push({
+         month,
+         rows,
+         total: summarize(rows).total,
+         weeks: weeklyBreakdown(year, month, transactions),
+       })
+     }
+     return list.reverse()
+   }, [transactions, year])
 
-  if (transactions.length === 0) {
-    return (
-      <div
-        data-testid="monthly-empty"
-        className="rounded-2xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground"
-      >
-        Tidak ada data
-      </div>
-    )
-  }
-
+  const [expanded, setExpanded] = useState<number | null>(() => {
+    return year === new Date().getFullYear() ? new Date().getMonth() : (groups[0]?.month ?? 11)
+  })
+   const yearTotal = useMemo(() => summarize(transactions).total, [transactions])
   return (
     <div className="space-y-3" data-testid="monthly-view">
       {groups.map((group) => {

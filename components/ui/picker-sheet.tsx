@@ -69,7 +69,7 @@ export function PickerSheet({
 
   return (
     <Overlay open={open} onClose={onClose} align="bottom" testId={testId} label={title}>
-      <div className="mx-auto flex max-h-[75vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border bg-card shadow-xl">
+      <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border border-b-0 border-border/80 bg-card pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-0">
         <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
           <h2 className="text-base font-bold">{title}</h2>
           <button

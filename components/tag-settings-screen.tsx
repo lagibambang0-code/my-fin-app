@@ -1,10 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, ChevronLeft, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronUp, GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { useTranslation } from '@/components/language-provider'
+import { cn } from '@/lib/utils'
 import {
   type Tag,
   createTag,
@@ -22,6 +24,7 @@ import {
  */
 export function TagSettingsScreen() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [tags, setTags] = useState<Tag[]>([])
   const [loaded, setLoaded] = useState(false)
   const [name, setName] = useState('')
@@ -29,7 +32,9 @@ export function TagSettingsScreen() {
   const [renamingUid, setRenamingUid] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [pendingDelete, setPendingDelete] = useState<Tag | null>(null)
-
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const touchDragIndex = useRef<number | null>(null)
   const load = useCallback(async () => {
     await initDB()
     setTags(await getTags())
@@ -81,6 +86,27 @@ export function TagSettingsScreen() {
     await load()
   }
 
+  const handleDrop = async (fromIndex: number, targetIndex: number) => {
+    if (
+      fromIndex === targetIndex ||
+      fromIndex < 0 ||
+      targetIndex < 0 ||
+      fromIndex >= tags.length ||
+      targetIndex >= tags.length
+    ) {
+      setDragIndex(null)
+      setDragOverIndex(null)
+      return
+    }
+    const next = [...tags]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(targetIndex, 0, moved)
+    setDragIndex(null)
+    setDragOverIndex(null)
+    setTags(next)
+    await reorderTags(next.map((tag) => tag.uid))
+    await load()
+  }
   return (
     <div className="flex flex-1 flex-col">
       <header className="sticky top-0 z-30 bg-background/80 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-4 backdrop-blur-xl md:px-10 md:pt-6 md:pb-8">
@@ -96,9 +122,9 @@ export function TagSettingsScreen() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Lainnya
+              {t.nav.more}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">Kelola tag</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.tag.title}</h1>
           </div>
         </div>
       </header>
@@ -110,7 +136,7 @@ export function TagSettingsScreen() {
             type="text"
             data-testid="tag-new-input"
             value={name}
-            placeholder="Nama tag baru"
+            placeholder={t.tag.placeholder}
             onChange={(e) => {
               setName(e.target.value)
               setError(null)
@@ -118,7 +144,7 @@ export function TagSettingsScreen() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') void add()
             }}
-            className="min-w-0 flex-1 rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 flex-1 rounded-xl border border-input bg-background px-3 py-2 text-sm transition-all focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <Button
             type="button"
@@ -128,7 +154,7 @@ export function TagSettingsScreen() {
             onClick={() => void add()}
           >
             <Plus className="size-4" />
-            Tambah
+            {t.common.add}
           </Button>
         </div>
 
@@ -144,7 +170,7 @@ export function TagSettingsScreen() {
 
         {loaded && tags.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground" data-testid="tag-empty">
-            Tidak ada data
+            {t.common.noData}
           </p>
         ) : (
           <div className="space-y-1">
@@ -152,11 +178,57 @@ export function TagSettingsScreen() {
               <div
                 key={tag.uid}
                 data-testid={`tag-row-${tag.uid}`}
-                className="flex items-center gap-1 rounded-xl border bg-card px-3 py-1.5"
+                data-tag-index={index}
+                draggable
+                onDragStart={(e) => {
+                  setDragIndex(index)
+                  e.dataTransfer.setData('text/plain', String(index))
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragEnd={() => {
+                  setDragIndex(null)
+                  setDragOverIndex(null)
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragOverIndex !== index) {
+                    setDragOverIndex(index)
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverIndex === index) {
+                    setDragOverIndex(null)
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const fromIdx = dragIndex ?? Number(e.dataTransfer.getData('text/plain'))
+                  if (!isNaN(fromIdx)) {
+                    void handleDrop(fromIdx, index)
+                  }
+                  setDragIndex(null)
+                  setDragOverIndex(null)
+                }}
+                className={cn(
+                  'flex items-center gap-1 rounded-xl border border-border bg-card px-3 py-2 shadow-xs transition-all',
+                  dragIndex === index && 'opacity-40 scale-[0.98] border-dashed border-primary',
+                  dragOverIndex === index &&
+                    dragIndex !== index &&
+                    'border-primary ring-2 ring-primary/30 bg-primary/5',
+                )}
               >
                 {renamingUid === tag.uid ? (
                   <div className="flex flex-1 items-center gap-2">
                     <input
+                      ref={(el) => {
+                        if (el) {
+                          el.focus()
+                          const len = el.value.length
+                          el.setSelectionRange(len, len)
+                        }
+                      }}
+                      autoFocus
                       type="text"
                       data-testid={`tag-rename-input-${tag.uid}`}
                       value={renameValue}
@@ -193,6 +265,7 @@ export function TagSettingsScreen() {
                       data-testid={`tag-up-${tag.uid}`}
                       disabled={index === 0}
                       onClick={() => void move(index, -1)}
+                      className="sr-only"
                     >
                       <ChevronUp className="size-4" />
                     </Button>
@@ -203,6 +276,7 @@ export function TagSettingsScreen() {
                       data-testid={`tag-down-${tag.uid}`}
                       disabled={index === tags.length - 1}
                       onClick={() => void move(index, 1)}
+                      className="sr-only"
                     >
                       <ChevronDown className="size-4" />
                     </Button>
@@ -228,6 +302,52 @@ export function TagSettingsScreen() {
                     >
                       <Trash2 className="size-4 text-destructive" />
                     </Button>
+                    <span
+                      draggable
+                      data-testid={`tag-drag-${tag.uid}`}
+                      onDragStart={(e) => {
+                        e.stopPropagation()
+                        setDragIndex(index)
+                        e.dataTransfer.setData('text/plain', String(index))
+                        e.dataTransfer.effectAllowed = 'move'
+                      }}
+                      onDragEnd={() => {
+                        setDragIndex(null)
+                        setDragOverIndex(null)
+                      }}
+                      onTouchStart={() => {
+                        touchDragIndex.current = index
+                        setDragIndex(index)
+                      }}
+                      onTouchMove={(e) => {
+                        if (touchDragIndex.current === null) return
+                        const touch = e.touches[0]
+                        const target = document.elementFromPoint(touch.clientX, touch.clientY)
+                        const row = target?.closest('[data-tag-index]')
+                        if (row) {
+                          const targetIdx = Number(row.getAttribute('data-tag-index'))
+                          if (!isNaN(targetIdx) && targetIdx !== dragOverIndex) {
+                            setDragOverIndex(targetIdx)
+                          }
+                        }
+                      }}
+                      onTouchEnd={() => {
+                        if (
+                          touchDragIndex.current !== null &&
+                          dragOverIndex !== null &&
+                          touchDragIndex.current !== dragOverIndex
+                        ) {
+                          void handleDrop(touchDragIndex.current, dragOverIndex)
+                        }
+                        touchDragIndex.current = null
+                        setDragIndex(null)
+                        setDragOverIndex(null)
+                      }}
+                      className="cursor-grab p-1.5 text-muted-foreground hover:text-foreground active:cursor-grabbing touch-none select-none"
+                      aria-hidden="true"
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
                   </>
                 )}
               </div>
@@ -238,10 +358,10 @@ export function TagSettingsScreen() {
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Hapus tag?"
-        description="Apakah anda yakin ingin menghapusnya? Tag akan dilepas dari semua transaksi."
-        confirmLabel="YA"
-        cancelLabel="TIDAK"
+        title={t.tag.deleteConfirmTitle}
+        description={t.tag.deleteConfirmDesc}
+        confirmLabel={t.common.confirm}
+        cancelLabel={t.common.refuse}
         onConfirm={async () => {
           const tag = pendingDelete
           setPendingDelete(null)

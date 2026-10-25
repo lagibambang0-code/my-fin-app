@@ -3,7 +3,22 @@
  * Kept in `lib` (not in the component) so pure aggregation code can use them.
  */
 
-export const MONTHS = [
+export const MONTHS_EN = [
+  { full: 'January', short: 'Jan' },
+  { full: 'February', short: 'Feb' },
+  { full: 'March', short: 'Mar' },
+  { full: 'April', short: 'Apr' },
+  { full: 'May', short: 'May' },
+  { full: 'June', short: 'Jun' },
+  { full: 'July', short: 'Jul' },
+  { full: 'August', short: 'Aug' },
+  { full: 'September', short: 'Sep' },
+  { full: 'October', short: 'Oct' },
+  { full: 'November', short: 'Nov' },
+  { full: 'December', short: 'Dec' },
+]
+
+export const MONTHS_ID = [
   { full: 'Januari', short: 'Jan' },
   { full: 'Februari', short: 'Feb' },
   { full: 'Maret', short: 'Mar' },
@@ -17,6 +32,13 @@ export const MONTHS = [
   { full: 'November', short: 'Nov' },
   { full: 'Desember', short: 'Des' },
 ]
+
+export function getLocalizedMonths(locale: 'en' | 'id') {
+  return locale === 'en' ? MONTHS_EN : MONTHS_ID
+}
+
+/** Default exported array for backward compatibility. */
+export const MONTHS = MONTHS_EN
 
 export type MonthValue = { year: number; month: number }
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MonthNavigator, MONTHS, type MonthValue } from '@/components/month-navigator'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import { type Currency, getAssetSummary, getMainCurrency, initDB } from '@/lib/db'
 import { formatCurrency } from '@/lib/format'
@@ -12,6 +13,7 @@ import { formatCurrency } from '@/lib/format'
 /** "Total statistik" — monthly balance accumulation chart (PRD-08 §3.2.15). */
 export function AssetStats() {
   const router = useRouter()
+  const { t } = useTranslation()
   const today = useMemo(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -58,9 +60,9 @@ export function AssetStats() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Aset
+              {t.asset.title}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">Total statistik</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.asset.totalStatistics}</h1>
           </div>
         </div>
       </header>
@@ -71,7 +73,7 @@ export function AssetStats() {
         </div>
 
         <div className="mt-4 rounded-2xl border bg-card p-4">
-          <p className="text-xs text-muted-foreground">akumulasi saldo</p>
+          <p className="text-xs text-muted-foreground">{t.asset.accumulatedBalance}</p>
           <p
             className="mt-1 text-xl font-bold tabular-nums"
             data-testid="stats-accumulated-balance"

@@ -47,7 +47,7 @@ export function ConfirmDialog({
   return (
     <div
       data-testid="confirm-dialog"
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px] transition-all animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel()
       }}

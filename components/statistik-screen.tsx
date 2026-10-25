@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Overlay } from '@/components/ui/overlay'
+import { DatePickerSheet } from '@/components/ui/date-picker-sheet'
 import { PickerSheet } from '@/components/ui/picker-sheet'
 import { MonthNavigator } from '@/components/month-navigator'
 import { CategoryBarChart } from '@/components/statistik-chart'
@@ -12,7 +14,8 @@ import { BookmarkScreen } from '@/components/bookmark-screen'
 import { TransactionForm, type TransactionDraft } from '@/components/transaction-form'
 import { TransactionsEmpty, type Lookups } from '@/components/transaction-list'
 import { cn } from '@/lib/utils'
-import { formatCurrency } from '@/lib/format'
+import { useTranslation } from '@/components/language-provider'
+import { formatCurrency, formatShortDate } from '@/lib/format'
 import { summarize } from '@/lib/transaction-utils'
 import {
   STATS_MODES,
@@ -50,12 +53,15 @@ const SWIPE_THRESHOLD = 50
 
 /** Tab "Statistik" (PRD-13): laporan per kategori + drill-down per kategori. */
 export function StatistikScreen() {
+  const router = useRouter()
+  const { t } = useTranslation()
   const [today] = useState(() => new Date())
   const [state, setState] = useState<StatsState>(() => initialStatsState())
   const [type, setType] = useState<ReportType>('expense')
 
   const [modeOpen, setModeOpen] = useState(false)
   const [periodOpen, setPeriodOpen] = useState(false)
+  const [periodField, setPeriodField] = useState<'from' | 'to' | null>(null)
   const [detailUid, setDetailUid] = useState<string | null>(null)
 
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
@@ -266,7 +272,7 @@ export function StatistikScreen() {
             onClick={() => setModeOpen(true)}
             className="shrink-0 gap-1 text-xs font-semibold md:text-sm"
           >
-            {STATS_MODE_LABEL[state.mode]}
+            {t.stats.modes[state.mode]}
             <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground" />
           </Button>
         </div>
@@ -301,7 +307,7 @@ export function StatistikScreen() {
                 )}
               >
                 <span className="text-xs font-medium">
-                  {id === 'income' ? 'Pendapatan' : 'Pengeluaran'}
+                  {id === 'income' ? t.stats.income : t.stats.expense}
                 </span>
                 <span
                   data-testid={`stats-total-${id}`}
@@ -324,11 +330,7 @@ export function StatistikScreen() {
         ) : stats.length === 0 ? (
           <TransactionsEmpty
             testId="stats-empty"
-            hint={
-              type === 'income'
-                ? 'Belum ada pendapatan pada periode ini.'
-                : 'Belum ada pengeluaran pada periode ini.'
-            }
+            hint={t.stats.noData}
           />
         ) : (
           <>
@@ -376,11 +378,11 @@ export function StatistikScreen() {
 
       <PickerSheet
         open={modeOpen}
-        title="Mode rentang"
+        title={t.stats.rangeMode}
         testId="stats-mode-picker"
         searchable={false}
         selected={state.mode}
-        items={STATS_MODES.map((mode) => ({ value: mode.id, label: mode.label }))}
+        items={STATS_MODES.map((mode) => ({ value: mode.id, label: t.stats.modes[mode.id] }))}
         onSelect={(value) => {
           setState((current) => ({ ...current, mode: value as StatsMode }))
           setModeOpen(false)
@@ -392,43 +394,43 @@ export function StatistikScreen() {
         open={periodOpen}
         onClose={() => setPeriodOpen(false)}
         align="bottom"
-        label="Periode"
+        label={t.stats.periodSheet.title}
         testId="stats-period-sheet"
       >
-        <div className="mx-auto w-full max-w-md rounded-2xl border bg-card p-4 shadow-xl">
-          <h2 className="text-base font-bold">Periode</h2>
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-4">
+          <h2 className="text-base font-bold">{t.stats.periodSheet.title}</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Pilih dua tanggal untuk rentang laporan.
+            {t.stats.periodSheet.desc}
           </p>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Dari
-              <input
-                type="date"
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t.stats.periodSheet.from}
+              <button
+                type="button"
                 data-testid="stats-period-from"
                 aria-label="Tanggal awal"
-                value={state.from}
-                onChange={(event) =>
-                  event.target.value &&
-                  setState((current) => ({ ...current, from: event.target.value }))
-                }
-                className="rounded-lg border border-input bg-background px-2 py-1.5 text-sm tabular-nums focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Sampai
-              <input
-                type="date"
+                aria-haspopup="dialog"
+                onClick={() => setPeriodField('from')}
+                className="flex items-center justify-between gap-2 rounded-xl border border-input bg-background px-3 py-2 text-sm font-semibold tabular-nums transition-colors hover:bg-secondary focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {formatShortDate(state.from)}
+                <CalendarDays aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t.stats.periodSheet.to}
+              <button
+                type="button"
                 data-testid="stats-period-to"
                 aria-label="Tanggal akhir"
-                value={state.to}
-                onChange={(event) =>
-                  event.target.value &&
-                  setState((current) => ({ ...current, to: event.target.value }))
-                }
-                className="rounded-lg border border-input bg-background px-2 py-1.5 text-sm tabular-nums focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </label>
+                aria-haspopup="dialog"
+                onClick={() => setPeriodField('to')}
+                className="flex items-center justify-between gap-2 rounded-xl border border-input bg-background px-3 py-2 text-sm font-semibold tabular-nums transition-colors hover:bg-secondary focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {formatShortDate(state.to)}
+                <CalendarDays aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            </div>
           </div>
           <Button
             type="button"
@@ -436,10 +438,22 @@ export function StatistikScreen() {
             data-testid="stats-period-apply"
             onClick={() => setPeriodOpen(false)}
           >
-            Terapkan
+            {t.stats.periodSheet.apply}
           </Button>
         </div>
       </Overlay>
+
+      <DatePickerSheet
+        open={periodField !== null}
+        value={(periodField === 'to' ? state.to : state.from) || state.from}
+        title={periodField === 'to' ? t.stats.periodSheet.endDate : t.stats.periodSheet.startDate}
+        onSelect={(iso) =>
+          setState((current) =>
+            periodField === 'to' ? { ...current, to: iso } : { ...current, from: iso },
+          )
+        }
+        onClose={() => setPeriodField(null)}
+      />
 
       <StatistikDetail
         open={Boolean(detailUid)}

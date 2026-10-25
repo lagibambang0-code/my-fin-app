@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Overlay } from '@/components/ui/overlay'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
   ASSET_GROUP_TRANSLATIONS,
@@ -45,6 +46,7 @@ const isCoreGroup = (name: string) => CORE_ASSET_GROUP_NAMES.includes(name)
 
 export function AssetGroupManager() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -89,7 +91,7 @@ export function AssetGroupManager() {
   async function handleSave() {
     const trimmed = formName.trim()
     if (!trimmed) {
-      setError('Nama grup tidak boleh kosong')
+      setError(t.asset.nameCannotBeEmpty)
       return
     }
     try {
@@ -113,7 +115,7 @@ export function AssetGroupManager() {
       closeForm()
       await load()
     } catch {
-      setError('Gagal menyimpan grup. Coba lagi.')
+      setError(t.asset.saveGroupError)
     }
   }
 
@@ -154,11 +156,11 @@ export function AssetGroupManager() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Kelola aset
+              {t.settings.manageAsset}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">Grup aset</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.asset.groups}</h1>
           </div>
-          <Button aria-label="Tambah grup" data-testid="add-group" onClick={openAdd}>
+          <Button aria-label={t.asset.addGroup} data-testid="add-group" onClick={openAdd}>
             <Plus className="size-4" />
           </Button>
         </div>
@@ -166,8 +168,7 @@ export function AssetGroupManager() {
 
       <div className="flex flex-1 flex-col px-4 md:px-10">
         <p className="mb-3 text-xs text-muted-foreground">
-          Grup dengan ikon adalah grup inti. Grup lain dapat dihapus dengan mencentang lalu
-          menekan tombol hapus.
+          {t.asset.emptyGroupDesc}
         </p>
 
         {loading ? (
@@ -175,7 +176,7 @@ export function AssetGroupManager() {
         ) : groups.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <AlertCircle className="mb-3 size-8 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Belum ada grup</p>
+            <p className="text-sm text-muted-foreground">{t.asset.noGroups}</p>
           </div>
         ) : (
           <div className="space-y-1">
@@ -291,7 +292,7 @@ export function AssetGroupManager() {
       >
         <div className="mx-auto w-full max-w-md rounded-2xl border bg-card p-5 shadow-xl">
           <h2 className="mb-4 text-lg font-bold">
-            {formMode === 'add' ? 'Tambah grup' : 'Ubah grup'}
+            {formMode === 'add' ? t.asset.addGroup : t.asset.editGroup}
           </h2>
           <form
             onSubmit={(e) => {
@@ -305,7 +306,7 @@ export function AssetGroupManager() {
                 htmlFor="group-name-input"
                 className="mb-1 block text-xs font-medium text-muted-foreground"
               >
-                Nama
+                {t.asset.group}
               </label>
               <input
                 id="group-name-input"
@@ -314,22 +315,25 @@ export function AssetGroupManager() {
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 className={inputClass}
-                placeholder="Mis. Dompet digital"
+                placeholder={t.asset.groupNamePlaceholder}
               />
             </div>
 
             <fieldset>
               <legend className="mb-1 block text-xs font-medium text-muted-foreground">
-                Tipe grup
+                {t.asset.groupType}
               </legend>
               <div className="space-y-1">
-                {TYPE_OPTIONS.map((opt) => (
+                {[
+                  { value: ASSET_GROUP_TYPE.general, label: t.asset.groupTypeGeneral },
+                  { value: ASSET_GROUP_TYPE.creditCard, label: t.asset.groupTypeCredit },
+                  { value: ASSET_GROUP_TYPE.debitCard, label: t.asset.groupTypeDebit },
+                ].map((opt) => (
                   <label
                     key={opt.value}
                     className="flex cursor-pointer items-center gap-2 rounded-lg border p-2.5 text-sm"
                   >
                     <input
-                      type="radio"
                       name="group-type"
                       value={opt.value}
                       checked={formType === opt.value}
@@ -354,11 +358,11 @@ export function AssetGroupManager() {
 
             <div className="mt-4 flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={closeForm}>
-                Batal
+                {t.common.cancel}
               </Button>
               <Button type="submit" data-testid="group-save">
                 <Check className="size-4" />
-                Menyimpan
+                {t.common.save}
               </Button>
             </div>
           </form>
@@ -367,10 +371,10 @@ export function AssetGroupManager() {
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Hapus grup?"
-        description={`Grup "${pendingDelete?.ACC_GROUP_NAME ?? ''}" beserta aset di dalamnya akan dipindahkan ke daftar yang dihapus dan dapat dipulihkan.`}
-        confirmLabel="Ya"
-        cancelLabel="Tidak"
+        title={t.asset.deleteGroupPrompt}
+        description={t.asset.deleteGroupDesc}
+        confirmLabel={t.common.yes}
+        cancelLabel={t.common.no}
         onConfirm={confirmRemove}
         onCancel={() => setPendingDelete(null)}
       />

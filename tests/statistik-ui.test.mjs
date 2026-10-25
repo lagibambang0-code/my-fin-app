@@ -147,6 +147,48 @@ async function setInput(page, selector, value) {
   )
 }
 
+const MONTH_NAMES = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
+
+/** Open the app date-picker sheet and select the given `YYYY-MM-DD` date. */
+async function pickDate(page, iso, trigger) {
+  await click(page, trigger)
+  await waitFor(page, '[data-testid="date-picker-sheet"]')
+
+  const [targetYear, targetMonth] = iso.split('-').map(Number)
+  await page.select('[data-testid="date-picker-year"]', String(targetYear))
+
+  for (let i = 0; i < 36; i++) {
+    const label = await page.$eval('[data-testid="date-picker-month-label"]', (el) =>
+      el.textContent.trim(),
+    )
+    const [monthName, yearStr] = label.split(' ')
+    const monthIndex = MONTH_NAMES.indexOf(monthName)
+    const year = Number(yearStr)
+    if (year === targetYear && monthIndex === targetMonth - 1) break
+    const goBack = year > targetYear || (year === targetYear && monthIndex > targetMonth - 1)
+    await click(
+      page,
+      goBack ? '[data-testid="date-picker-prev-month"]' : '[data-testid="date-picker-next-month"]',
+    )
+  }
+
+  await click(page, `[data-testid="date-picker-day-${iso}"]`)
+  await waitGone(page, '[data-testid="date-picker-sheet"]')
+}
+
 /** Click the first element whose data-testid starts with `prefix` and contains `text`. */
 async function clickContaining(page, prefix, text) {
   const ok = await page.evaluate(
@@ -522,8 +564,8 @@ async function main() {
       )
       await click(page, '[data-testid="stats-period-button"]')
       await waitFor(page, '[data-testid="stats-period-sheet"]')
-      await setInput(page, '[data-testid="stats-period-from"]', '2020-01-01')
-      await setInput(page, '[data-testid="stats-period-to"]', '2020-01-31')
+      await pickDate(page, '2020-01-01', '[data-testid="stats-period-from"]')
+      await pickDate(page, '2020-01-31', '[data-testid="stats-period-to"]')
       await click(page, '[data-testid="stats-period-apply"]')
       await waitGone(page, '[data-testid="stats-period-sheet"]')
       await waitFor(page, '[data-testid="stats-empty"]')
@@ -534,8 +576,8 @@ async function main() {
 
       await click(page, '[data-testid="stats-period-button"]')
       await waitFor(page, '[data-testid="stats-period-sheet"]')
-      await setInput(page, '[data-testid="stats-period-from"]', TODAY_ISO)
-      await setInput(page, '[data-testid="stats-period-to"]', TODAY_ISO)
+      await pickDate(page, TODAY_ISO, '[data-testid="stats-period-from"]')
+      await pickDate(page, TODAY_ISO, '[data-testid="stats-period-to"]')
       await click(page, '[data-testid="stats-period-apply"]')
       await waitGone(page, '[data-testid="stats-period-sheet"]')
       await waitFor(page, '[data-testid="stats-chart"]')
@@ -593,9 +635,9 @@ async function main() {
     await test('geser (swipe) mengubah periode', async () => {
       const label = () => textOf(page, '[data-testid="month-navigator-label"]')
       const start = await label()
-      await click(page, '[aria-label="Bulan sebelumnya"]')
-      const previous = await label()
       await click(page, '[aria-label="Bulan selanjutnya"]')
+      const next = await label()
+      await click(page, '[aria-label="Bulan sebelumnya"]')
       assert((await label()) === start, 'arrows did not return to the starting period')
 
       const swipe = (deltaX) =>
@@ -629,9 +671,9 @@ async function main() {
           expected,
         )
 
-      // Sama seperti tab Transaksi: geser kiri mundur, geser kanan maju.
+      // Mengikuti jari: geser kanan→kiri (dx<0) maju, kiri→kanan (dx>0) mundur.
       await swipe(-120)
-      await waitForLabel(previous)
+      await waitForLabel(next)
       await swipe(120)
       await waitForLabel(start)
     })

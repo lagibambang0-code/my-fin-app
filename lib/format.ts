@@ -3,9 +3,9 @@ import type { Currency } from '@/lib/db'
 type CurrencyFormat = Pick<Currency, 'SYMBOL' | 'SYMBOL_POSITION' | 'DECIMAL_POINT'>
 
 const DEFAULT_FORMAT: CurrencyFormat = {
-  SYMBOL: 'Rp',
+  SYMBOL: '$',
   SYMBOL_POSITION: 'front',
-  DECIMAL_POINT: 0,
+  DECIMAL_POINT: 2,
 }
 
 /**
@@ -16,7 +16,8 @@ export function formatCurrency(value: number, currency?: CurrencyFormat | null):
   const { SYMBOL, SYMBOL_POSITION, DECIMAL_POINT } = currency ?? DEFAULT_FORMAT
   const decimals = DECIMAL_POINT ?? 0
   const safe = Number.isFinite(value) ? value : 0
-  const formatted = new Intl.NumberFormat('id-ID', {
+  const locale = (SYMBOL === '$' || decimals > 0) ? 'en-US' : 'id-ID'
+  const formatted = new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(safe)
@@ -29,15 +30,53 @@ export function formatAmount(value: number, currency?: CurrencyFormat | null): s
 }
 
 /**
- * Amount display for a number pad input that keeps a trailing decimal
- * separator while the user is still typing the decimals (`1.500,`).
+ * Amount display for an amount field whose state holds the canonical digit
+ * string (`"1500"`, `"1500.5"`). Thousands are grouped per PRD-06 and a
+ * trailing decimal separator is preserved while the user is still typing
+ * (`1.500,`).
+ *
+ * Unlike `formatAmount` this never pads missing decimals, so an in-progress
+ * value does not grow a `,00` behind the cursor.
  */
 export function formatTypingAmount(raw: string, currency?: CurrencyFormat | null): string {
   if (!raw) return formatAmount(0, currency)
   const [intPart, decPart] = raw.split('.')
-  const intFormatted = formatAmount(Number(intPart || '0'), currency)
-  if (decPart === undefined) return intFormatted
-  return `${intFormatted}${(currency?.DECIMAL_POINT ?? 0) > 0 ? ',' : '.'}${decPart}`
+  const grouped = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(
+    Number(intPart || '0'),
+  )
+  if (decPart === undefined) return grouped
+  return `${grouped}${(currency?.DECIMAL_POINT ?? 0) > 0 ? ',' : '.'}${decPart}`
+}
+
+/**
+ * Convert the text currently shown in an amount field back into the canonical
+ * digit string kept in state — the inverse of `formatTypingAmount`.
+ *
+ * Grouping separators are dropped, so retyping `1.5000` becomes `15000` and
+ * re-groups correctly instead of being read as a decimal fraction. With a
+ * decimal currency the last separator marks the decimal part (capped at the
+ * currency's scale); for a 0-decimal currency every separator is grouping.
+ */
+export function normalizeAmountInput(display: string, currency?: CurrencyFormat | null): string {
+  const decimals = Math.max(0, currency?.DECIMAL_POINT ?? 0)
+  const cleaned = display.replace(/[^\d.,-]/g, '')
+  const negative = cleaned.trimStart().startsWith('-')
+  const digits = cleaned.replace(/-/g, '')
+  const sign = negative ? '-' : ''
+
+  if (decimals <= 0) {
+    const body = digits.replace(/[.,]/g, '')
+    return body ? `${sign}${body}` : sign
+  }
+
+  const lastSep = Math.max(digits.lastIndexOf('.'), digits.lastIndexOf(','))
+  if (lastSep === -1) return digits ? `${sign}${digits}` : ''
+  const intPart = digits.slice(0, lastSep).replace(/[.,]/g, '')
+  const decPart = digits
+    .slice(lastSep + 1)
+    .replace(/[.,]/g, '')
+    .slice(0, decimals)
+  return `${sign}${intPart}.${decPart}`
 }
 
 /**

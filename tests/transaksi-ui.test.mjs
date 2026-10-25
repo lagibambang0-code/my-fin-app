@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import puppeteer from 'puppeteer'
 
-const BASE = 'http://localhost:3000'
+const BASE = process.env.APP_BASE ?? 'http://localhost:3000'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const toIso = (date) =>
@@ -37,7 +37,7 @@ async function ensureServer() {
     return
   }
   console.log('· Starting dev server…')
-  server = spawn('pnpm', ['dev'], { cwd: process.cwd(), stdio: 'ignore', detached: true })
+  server = spawn('pnpm', ['dev'], { cwd: process.cwd(), stdio: 'ignore', detached: true, env: { ...process.env } })
   const start = Date.now()
   while (Date.now() - start < 90000) {
     if (await isUp()) {
@@ -148,35 +148,43 @@ async function setInput(page, selector, value) {
   )
 }
 
-/** Open the custom date picker and select the given ISO date. */
-async function pickDate(page, iso) {
-  await click(page, '[data-testid="trx-date-input"]')
-  const target = new Date(`${iso}T00:00:00`)
-  const targetYear = target.getFullYear()
-  const targetMonth = target.getMonth()
-  const targetDay = target.getDate()
+const MONTH_NAMES = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
 
-  for (let i = 0; i < 24; i++) {
-    const label = await page.$eval('[data-testid="date-picker-month-label"]', (el) => el.textContent)
+/** Open the app date-picker sheet and select the given `YYYY-MM-DD` date. */
+async function pickDate(page, iso, trigger = '[data-testid="trx-date-input"]') {
+  await click(page, trigger)
+  await waitFor(page, '[data-testid="date-picker-sheet"]')
+
+  const [targetYear, targetMonth] = iso.split('-').map(Number)
+  await page.select('[data-testid="date-picker-year"]', String(targetYear))
+
+  for (let i = 0; i < 36; i++) {
+    const label = await page.$eval('[data-testid="date-picker-month-label"]', (el) =>
+      el.textContent.trim(),
+    )
     const [monthName, yearStr] = label.split(' ')
-    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
-    const currentMonth = months.indexOf(monthName)
-    const currentYear = parseInt(yearStr)
-    if (currentYear === targetYear && currentMonth === targetMonth) break
-    const prev = currentYear < targetYear || (currentYear === targetYear && currentMonth < targetMonth)
-    await click(page, prev ? '[aria-label="Bulan selanjutnya"]' : '[aria-label="Bulan sebelumnya"]')
+    const monthIndex = MONTH_NAMES.indexOf(monthName)
+    const year = Number(yearStr)
+    if (year === targetYear && monthIndex === targetMonth - 1) break
+    const goBack = year > targetYear || (year === targetYear && monthIndex > targetMonth - 1)
+    await click(page, goBack ? '[data-testid="date-picker-prev-month"]' : '[data-testid="date-picker-next-month"]')
   }
 
-  await page.evaluate((day) => {
-    const buttons = document.querySelectorAll('.grid.grid-cols-7.gap-1 button')
-    for (const btn of buttons) {
-      if (parseInt(btn.textContent) === day) {
-        btn.click()
-        return
-      }
-    }
-  }, targetDay)
-  await waitGone(page, '[data-testid="date-picker-month-label"]')
+  await click(page, `[data-testid="date-picker-day-${iso}"]`)
+  await waitGone(page, '[data-testid="date-picker-sheet"]')
 }
 
 async function setTextarea(page, selector, value) {
@@ -293,7 +301,13 @@ async function openForm(page, keys = []) {
 async function pickCategory(page, text) {
   await click(page, '[data-testid="trx-category-button"]')
   await waitFor(page, '[data-testid="category-picker"]')
+  await waitFor(page, '[data-testid^="category-option-"]')
   await clickContaining(page, 'category-option-', text)
+  await sleep(150)
+  const stillOpen = await page.$('[data-testid="category-picker"]')
+  if (stillOpen) {
+    await clickContaining(page, 'category-option-', text)
+  }
   await waitGone(page, '[data-testid="category-picker"]')
 }
 
@@ -302,6 +316,17 @@ async function pickAsset(page, buttonTestId, uid) {
   await waitFor(page, '[data-testid="asset-picker"]')
   await click(page, `[data-testid="picker-option-${uid}"]`)
   await waitGone(page, '[data-testid="asset-picker"]')
+}
+
+/** Enter the transfer fee with the app's own pad (no native keyboard). */
+async function setFee(page, digits) {
+  await click(page, '[data-testid="trx-fee-button"]')
+  await waitFor(page, '[data-testid="trx-fee-sheet"]')
+  for (const key of String(digits)) {
+    await click(page, `[data-testid="fee-numpad-${key}"]`)
+  }
+  await click(page, '[data-testid="trx-fee-sheet-done"]')
+  await waitGone(page, '[data-testid="trx-fee-sheet"]')
 }
 
 async function saveForm(page) {
@@ -463,7 +488,7 @@ async function main() {
     await test('TC-TRX-10: transfer Cash → Accounts (blokir bila belum lengkap)', async () => {
       await openForm(page, ['2', '5', '00', '0'])
       await click(page, '[data-testid="trx-type-transfer"]')
-      await waitFor(page, '[data-testid="trx-fee-input"]')
+      await waitFor(page, '[data-testid="trx-fee-button"]')
       assert(await exists(page, '[data-testid="trx-from-asset-button"]'), 'Uang keluar missing')
       assert(await exists(page, '[data-testid="trx-to-asset-button"]'), 'Uang masuk missing')
 
@@ -473,7 +498,7 @@ async function main() {
 
       await pickAsset(page, 'trx-from-asset-button', 'ast_cash')
       await pickAsset(page, 'trx-to-asset-button', 'ast_accounts')
-      await setInput(page, '#trx-fee-input', '500')
+      await setFee(page, '500')
       await saveForm(page)
 
       assert(
@@ -482,6 +507,43 @@ async function main() {
       )
       assert((await amountOf(page, '[data-testid="trx-summary-income"]')) === 100000, 'income changed')
       assert((await amountOf(page, '[data-testid="trx-summary-expense"]')) === 5000, 'expense changed')
+    })
+
+    await test('TC-TRX-10b: Biaya transfer diisi lewat numpad aplikasi, bukan keyboard', async () => {
+      await openForm(page, ['2', '5', '00', '0'])
+      await click(page, '[data-testid="trx-type-transfer"]')
+      await waitFor(page, '[data-testid="trx-fee-button"]')
+
+      // The fee must not fall back to the native keyboard — no text field.
+      assert(
+        !(await exists(page, '#trx-fee-input, [data-testid="trx-fee-input"]')),
+        'fee must not use a keyboard input',
+      )
+      assert(
+        await hasText(page, '[data-testid="trx-fee-value"]', 'Rp 0'),
+        'fee row should start at Rp 0',
+      )
+
+      await click(page, '[data-testid="trx-fee-button"]')
+      await waitFor(page, '[data-testid="trx-fee-sheet"]')
+      for (const key of ['1', '5', '0', '0', '0']) {
+        await click(page, `[data-testid="fee-numpad-${key}"]`)
+      }
+      assert(
+        (await textOf(page, '[data-testid="trx-fee-sheet-value"]')) === '15.000',
+        `sheet should group per key press, got ${await textOf(page, '[data-testid="trx-fee-sheet-value"]')}`,
+      )
+
+      await click(page, '[data-testid="fee-numpad-back"]')
+      await click(page, '[data-testid="trx-fee-sheet-done"]')
+      await waitGone(page, '[data-testid="trx-fee-sheet"]')
+      assert(
+        await hasText(page, '[data-testid="trx-fee-value"]', 'Rp 1.500'),
+        'fee row should show the value entered with the pad',
+      )
+
+      await click(page, '[data-testid="trx-form-back"]')
+      await waitGone(page, '[data-testid="transaction-form"]')
     })
 
     await test('TC-TRX-11: "Lanjut" menyimpan lalu membuka form lagi', async () => {
@@ -952,7 +1014,7 @@ async function main() {
     })
 
     await test('NFR-04: saldo aset mengikuti transaksi', async () => {
-      await page.goto(`${BASE}/aset`, { waitUntil: 'networkidle0' })
+      await page.goto(`${BASE}/aset`, { waitUntil: ['domcontentloaded', 'networkidle2'] })
       await waitFor(page, '[data-testid="asset-row-Cash"]')
       const cash = await amountOf(page, '[data-testid="asset-row-Cash"]')
       assert(cash === -33100, `Cash should be debited by transactions, got ${cash}`)
@@ -1009,6 +1071,103 @@ async function main() {
       await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
     })
 
+    // ---------------------------------------------------------------------
+    console.log('\n▶ T-36: tombol minus dan Selesai pada numpad')
+
+    await test('TC-TRX-36a: tombol minus ada & tidak ada di transfer', async () => {
+      await openForm(page)
+      // Form bukan transfer → minus harus ada
+      assert(
+        await exists(page, '[data-testid="numpad-minus"]'),
+        'tombol minus harus ada untuk pengeluaran/pendapatan',
+      )
+      // Ganti ke transfer → minus harus tidak tampil
+      await click(page, '[data-testid="trx-type-transfer"]')
+      assert(
+        !(await exists(page, '[data-testid="numpad-minus"]')),
+        'tombol minus harus tidak ada untuk transfer',
+      )
+      await click(page, '[data-testid="trx-form-back"]')
+      await waitGone(page, '[data-testid="transaction-form"]')
+    })
+
+    await test('TC-TRX-36b: minus mengubah tanda, bergantian, tidak menumpuk', async () => {
+      await openForm(page, ['5', '0', '0', '0'])
+      // Cek tampilan awal positif
+      let display = await textOf(page, '[data-testid="trx-amount-display"]')
+      assert(display.includes('5.000') && !display.startsWith('-'), `tampilan awal harus positif, dapat: ${display}`)
+
+      // Tekan minus → negatif
+      await click(page, '[data-testid="numpad-minus"]')
+      display = await textOf(page, '[data-testid="trx-amount-display"]')
+      assert(display.startsWith('-') && display.includes('5.000'), `setelah minus harus negatif, dapat: ${display}`)
+
+      // Tekan lagi → kembali positif (tidak menumpuk tanda)
+      await click(page, '[data-testid="numpad-minus"]')
+      display = await textOf(page, '[data-testid="trx-amount-display"]')
+      assert(!display.startsWith('-') && display.includes('5.000'), `setelah minus kedua harus positif, dapat: ${display}`)
+
+      await click(page, '[data-testid="trx-form-back"]')
+      await waitGone(page, '[data-testid="transaction-form"]')
+    })
+
+    await test('TC-TRX-36c: minus pada nol tidak menghasilkan -0', async () => {
+      await openForm(page)
+      // amount = 0; tekan minus → display tetap 0 (tidak ada tanda minus)
+      await click(page, '[data-testid="numpad-minus"]')
+      const display = await textOf(page, '[data-testid="trx-amount-display"]')
+      assert(!display.startsWith('-'), `minus pada nol tidak boleh menghasilkan -0, dapat: ${display}`)
+      await click(page, '[data-testid="trx-form-back"]')
+      await waitGone(page, '[data-testid="transaction-form"]')
+    })
+
+    await test('TC-TRX-36d: Selesai tutup numpad, form tetap terbuka & bisa disimpan', async () => {
+      await openForm(page, ['3', '0', '0', '0'])
+      // Klik Selesai → numpad harus hilang
+      await click(page, '[data-testid="numpad-done"]')
+      assert(
+        !(await exists(page, '[data-testid="numpad-done"]')),
+        'numpad harus tertutup setelah Selesai',
+      )
+      // Form masih terbuka
+      assert(await exists(page, '[data-testid="transaction-form"]'), 'form harus tetap terbuka')
+      // Total masih terbaca
+      const display = await textOf(page, '[data-testid="trx-amount-display"]')
+      assert(display.includes('3.000'), `nilai harus tetap setelah Selesai, dapat: ${display}`)
+      // Bisa disimpan setelah pilih kategori & aset
+      await pickCategory(page, 'Food')
+      await pickAsset(page, 'trx-asset-button', 'ast_cash')
+      await saveForm(page)
+    })
+
+    await test('TC-TRX-36e: tap Total membuka kembali numpad', async () => {
+      await openForm(page, ['2', '0', '0', '0'])
+      await click(page, '[data-testid="numpad-done"]')
+      assert(!(await exists(page, '[data-testid="numpad-done"]')), 'numpad harus tertutup')
+      // Tap area Total → numpad kembali terbuka
+      await click(page, '[aria-label="Buka papan angka"]')
+      assert(
+        await exists(page, '[data-testid="numpad-done"]'),
+        'numpad harus terbuka kembali setelah tap Total',
+      )
+      await click(page, '[data-testid="trx-form-back"]')
+      await waitGone(page, '[data-testid="transaction-form"]')
+    })
+
+    await test('TC-TRX-36f: nominal negatif tidak merusak ringkasan (expense tetap positif)', async () => {
+      const expenseBefore = await amountOf(page, '[data-testid="trx-summary-expense"]')
+      // Buka form, ketik 2000, tekan minus → simpan sebagai expense
+      await openForm(page, ['2', '0', '0', '0'])
+      await click(page, '[data-testid="numpad-minus"]')
+      await pickCategory(page, 'Food')
+      await pickAsset(page, 'trx-asset-button', 'ast_cash')
+      await saveForm(page)
+      const expenseAfter = await amountOf(page, '[data-testid="trx-summary-expense"]')
+      assert(
+        expenseAfter === expenseBefore + 2000,
+        `ringkasan expense harus bertambah 2000, sebelum ${expenseBefore} setelah ${expenseAfter}`,
+      )
+    })
     // ---------------------------------------------------------------------
     await test('tidak ada error di console', async () => {
       const real = consoleErrors.filter((e) => !/favicon|DevTools|Download the React|404/i.test(e))

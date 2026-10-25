@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Check, ChevronLeft, Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 
 export const MODE_STORAGE_KEY = 'dompetku:mode'
@@ -87,9 +88,9 @@ export function readStoredTheme(): { mode: ThemeMode; palette: ThemePalette } {
 
 export function ThemeSettings() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [mode, setMode] = useState<ThemeMode>('light')
   const [palette, setPalette] = useState<ThemePalette>('teal')
-
   useEffect(() => {
     const stored = readStoredTheme()
     setMode(stored.mode)
@@ -109,7 +110,7 @@ export function ThemeSettings() {
   }
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col" data-testid="theme-settings-screen">
       <header className="sticky top-0 z-30 bg-background/80 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-4 backdrop-blur-xl md:px-10 md:pt-6 md:pb-8">
         <div className="flex items-center gap-2">
           <Button
@@ -122,21 +123,21 @@ export function ThemeSettings() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Kelola pengaturan
+              {t.nav.more}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">Tema</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.theme.title}</h1>
           </div>
         </div>
       </header>
 
       <div className="flex flex-1 flex-col gap-6 px-4 pb-6 md:px-10">
         <p className="text-sm text-muted-foreground">
-          Pilih mode tampilan dan warna tema yang paling nyaman untukmu.
+          {t.theme.subtitle}
         </p>
 
         <section className="flex flex-col gap-2">
           <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Mode tampilan
+            {t.theme.mode}
           </h2>
           <div
             className="grid grid-cols-2 gap-3"
@@ -167,9 +168,9 @@ export function ThemeSettings() {
                   >
                     <Icon aria-hidden="true" className="size-4.5" />
                   </span>
-                  <span className="text-sm font-semibold">{label}</span>
+                  <span className="text-sm font-semibold">{id === 'light' ? t.theme.light : t.theme.dark}</span>
                   <span className="text-[11px] leading-tight text-muted-foreground">
-                    {description}
+                    {id === 'light' ? t.theme.lightDesc : t.theme.darkDesc}
                   </span>
                   {selected && (
                     <Check
@@ -185,10 +186,10 @@ export function ThemeSettings() {
 
         <section className="flex flex-col gap-2">
           <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Warna tema
+            {t.theme.palette}
           </h2>
           <p className="px-1 text-[11px] leading-tight text-muted-foreground">
-            Warna tema berlaku di mode Terang maupun Gelap.
+            {t.theme.paletteNote}
           </p>
           <div className="flex flex-col gap-2" role="radiogroup" aria-label="Warna tema">
             {palettes.map(({ id, label, description, swatches }) => {
@@ -217,9 +218,11 @@ export function ThemeSettings() {
                     ))}
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-sm font-semibold">{label}</span>
+                    <span className="text-sm font-semibold">
+                      {id === 'teal' ? t.theme.palettes.tealName : id === 'ocean' ? t.theme.palettes.oceanName : t.theme.palettes.lavenderName}
+                    </span>
                     <span className="text-[11px] leading-tight text-muted-foreground">
-                      {description}
+                      {id === 'teal' ? t.theme.palettes.tealDesc : id === 'ocean' ? t.theme.palettes.oceanDesc : t.theme.palettes.lavenderDesc}
                     </span>
                   </span>
                   {selected && (

@@ -1,16 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  AlignLeft,
   Camera,
   Calendar,
   CalendarClock,
   Check,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Copy,
+  Image as ImageIcon,
+  PencilLine,
   Star,
   Tag,
+  Tags,
   Trash2,
   Wallet,
   X,
@@ -19,16 +24,19 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Numpad,
-  NumpadBackspace,
   applyNumpadKey,
   type NumpadKey,
 } from '@/components/ui/numpad'
 import { FullScreenSheet, Overlay } from '@/components/ui/overlay'
+import { DatePickerSheet } from '@/components/ui/date-picker-sheet'
+import { TimePickerSheet } from '@/components/ui/time-picker-sheet'
+import { AmountSheet } from '@/components/ui/amount-sheet'
 import { PickerSheet, type PickerItem } from '@/components/ui/picker-sheet'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { CategoryPicker } from '@/components/transaction-category-picker'
 import { TransactionTagPicker } from '@/components/transaction-tag-picker'
 import { RecurringSheet, type RecurringValue } from '@/components/recurring-sheet'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
   type Asset,
@@ -57,7 +65,6 @@ import {
   formatShortDate,
   formatTypingAmount,
   fromIso,
-  toIso,
   todayIso,
   WEEKDAYS_SHORT,
 } from '@/lib/format'
@@ -106,6 +113,58 @@ const EMPTY_RECUR: RecurringValue = {
   installmentMonths: null,
 }
 
+/** Tappable picker row shared by the Kategori / Aset / Berulang fields. */
+function FieldRow({
+  testId,
+  valueTestId,
+  icon,
+  label,
+  value,
+  placeholder,
+  onAction,
+  divided = true,
+}: {
+  testId: string
+  valueTestId?: string
+  icon: ReactNode
+  label: string
+  value: string | null | undefined
+  placeholder: string
+  onAction: () => void
+  divided?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onAction}
+      className={cn(
+        'flex min-h-12 w-full items-center justify-between gap-3 px-3.5 py-2 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        divided && 'border-t',
+      )}
+    >
+      <span className="flex items-center gap-2.5 text-sm text-muted-foreground">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
+          {icon}
+        </span>
+        {label}
+      </span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span
+          data-testid={valueTestId}
+          className={cn(
+            'truncate text-sm',
+            value ? 'font-semibold text-foreground' : 'text-muted-foreground',
+          )}
+        >
+          {value ?? placeholder}
+        </span>
+        <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      </span>
+    </button>
+  )
+}
+
 export function TransactionForm({
   open,
   transaction,
@@ -116,13 +175,21 @@ export function TransactionForm({
   onOpenBookmarks,
   onCopy,
 }: TransactionFormProps) {
+  const { t } = useTranslation()
   const isEdit = Boolean(transaction?.id)
   const [type, setType] = useState<TrxType>('expense')
   const [date, setDate] = useState(todayIso())
+  const [time, setTime] = useState(() => {
+    const now = new Date()
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  })
   const [datePickerOpen, setDatePickerOpen] = useState(false)
-  const [datePickerCursor, setDatePickerCursor] = useState(() => new Date())
+  const [timePickerOpen, setTimePickerOpen] = useState(false)
   const [raw, setRaw] = useState('')
-  const [feeRaw, setFeeRaw] = useState('')
+  const [negative, setNegative] = useState(false)
+  const [numpadOpen, setNumpadOpen] = useState(true)
+  const [fee, setFee] = useState(0)
+  const [feeSheetOpen, setFeeSheetOpen] = useState(false)
   const [categoryUid, setCategoryUid] = useState<string | null>(null)
   const [categoryLabel, setCategoryLabel] = useState<string | null>(null)
   const [assetUid, setAssetUid] = useState<string | null>(null)
@@ -162,8 +229,20 @@ export function TransactionForm({
 
     setType((source?.DO_TYPE as TrxType) ?? initial?.type ?? 'expense')
     setDate(source?.ZDATE ?? initial?.date ?? todayIso())
-    setRaw(source ? String(Number(source.ZMONEY) || '') : initial?.amount ? String(initial.amount) : '')
-    setFeeRaw(source?.FEE ? String(source.FEE) : initial?.fee ? String(initial.fee) : '')
+    setTime(
+      source?.wtime
+        ? source.wtime.slice(0, 5)
+        : (() => {
+            const now = new Date()
+            return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+          })(),
+    )
+    const startMoney = source ? Number(source.ZMONEY) || 0 : (initial?.amount ?? 0)
+    setRaw(startMoney !== 0 ? String(Math.abs(startMoney)) : '')
+    setNegative(startMoney < 0)
+    setNumpadOpen(true)
+    setFee(Number(source?.FEE || initial?.fee || 0) || 0)
+    setFeeSheetOpen(false)
     setCategoryUid(source?.ctgUid ?? initial?.categoryUid ?? null)
     setCategoryLabel(source?.CATEGORY_NAME ?? initial?.categoryName ?? null)
     setAssetUid(source?.assetUid ?? initial?.assetUid ?? null)
@@ -202,8 +281,7 @@ export function TransactionForm({
   }, [open, transaction, initial])
 
   const decimals = currency?.DECIMAL_POINT ?? 0
-  const amount = raw ? Number(raw) : 0
-  const fee = feeRaw ? Number(feeRaw) : 0
+  const amount = (negative && Number(raw) > 0 ? -1 : 1) * (raw ? Number(raw) : 0)
 
   const assetName = useMemo(
     () => assets.find((a) => a.uid === assetUid)?.NIC_NAME ?? null,
@@ -259,18 +337,17 @@ export function TransactionForm({
     }
 
     const uid = uidRef.current
-    const now = new Date()
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`
+    const timeFormatted = `${time || '12:00'}:00`
 
     if (transaction?.id) {
       await updateTransaction(transaction.id, {
         DO_TYPE: type,
         ZDATE: date,
-        WDATE: `${date} ${time}`,
-        wtime: time,
+        WDATE: `${date} ${timeFormatted}`,
+        wtime: timeFormatted,
         ZMONEY: String(amount),
         IN_ZMONEY: type === 'transfer' ? String(amount) : null,
-        AMOUNT_ACCOUNT: amount,
+        AMOUNT_ACCOUNT: Math.abs(amount),
         FEE: type === 'transfer' ? fee : 0,
         ctgUid: type === 'transfer' ? '' : (categoryUid ?? ''),
         assetUid: assetUid ?? '',
@@ -294,8 +371,8 @@ export function TransactionForm({
         toAssetUid: type === 'transfer' ? toAssetUid : null,
         ZCONTENT: note || null,
         ZDATE: date,
-        WDATE: `${date} ${time}`,
-        wtime: time,
+        WDATE: `${date} ${timeFormatted}`,
+        wtime: timeFormatted,
         paid: null,
         DO_TYPE: type,
         ZMONEY: String(amount),
@@ -314,7 +391,7 @@ export function TransactionForm({
         IS_DEL: 0,
         UTIME: Date.now(),
         currencyUid: currency?.uid ?? 'IDR_IDR',
-        AMOUNT_ACCOUNT: amount,
+        AMOUNT_ACCOUNT: Math.abs(amount),
         lat: null,
         lng: null,
         gstd: null,
@@ -339,7 +416,7 @@ export function TransactionForm({
       assetUid: assetUid ?? '',
       toAssetUid: type === 'transfer' ? toAssetUid : null,
       currencyUid: currency?.uid ?? 'IDR_IDR',
-      AMOUNT_ACCOUNT: amount,
+      AMOUNT_ACCOUNT: Math.abs(amount),
       FEE: type === 'transfer' ? fee : 0,
       ZCONTENT: note || null,
       ZDATA: description || null,
@@ -359,7 +436,10 @@ export function TransactionForm({
     if (keepOpen) {
       // Simpan & Lanjut: keep type + date + asset, clear the entry itself.
       setRaw('')
-      setFeeRaw('')
+      setNegative(false)
+      setNumpadOpen(true)
+      setFee(0)
+      setFeeSheetOpen(false)
       setCategoryUid(null)
       setCategoryLabel(null)
       setNote('')
@@ -404,8 +484,8 @@ export function TransactionForm({
   ]
 
   return (
-    <FullScreenSheet open={open} testId="transaction-form">
-      <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/85 px-3 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-xl">
+    <FullScreenSheet open={open} testId="transaction-form" variant="plain">
+      <header className="z-30 flex items-center gap-2 border-b px-3 py-2.5">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -416,7 +496,7 @@ export function TransactionForm({
           <ChevronLeft aria-hidden="true" className="size-5" />
         </Button>
         <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">
-          {isEdit ? `Ubah ${title}` : title}
+          {title}
         </h1>
         <Button
           variant="ghost"
@@ -434,7 +514,7 @@ export function TransactionForm({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-lg space-y-4 px-4 py-4">
+        <div className="mx-auto w-full max-w-lg space-y-3 px-3.5 py-3">
           <div
             role="tablist"
             aria-label="Tipe transaksi"
@@ -449,7 +529,7 @@ export function TransactionForm({
                 data-testid={`trx-type-${option}`}
                 onClick={() => {
                   setType(option)
-            
+                  if (option === 'transfer') setNegative(false)
                 }}
                 className={cn(
                   'rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -458,254 +538,155 @@ export function TransactionForm({
                     : 'text-muted-foreground hover:bg-secondary',
                 )}
               >
-                {option === 'income' ? 'Pendapatan' : option === 'expense' ? 'Pengeluaran' : 'Transfer'}
+                {option === 'income' ? t.transaction.income : option === 'expense' ? t.transaction.expense : t.transaction.transfer}
               </button>
             ))}
           </div>
 
-          {/* Tanggal */}
-          <div className="rounded-2xl border bg-card">
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <label className="text-sm text-muted-foreground">Tanggal</label>
-              <div className="flex items-center gap-2">
-                {relative && (
-                  <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                    {relative}
-                  </span>
-                )}
+          {/* Tanggal & pengulangan */}
+          <div className="overflow-hidden rounded-2xl border bg-card">
+            <div className="flex min-h-12 items-center justify-between gap-2 px-3.5 py-2">
+              <span className="flex items-center gap-2.5 text-sm text-muted-foreground">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
+                  <Calendar aria-hidden="true" className="size-3.5" />
+                </span>
+                {t.transaction.date}
+              </span>
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   data-testid="trx-date-input"
-                  onClick={() => setDatePickerOpen((v) => !v)}
-                  className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium tabular-nums transition-colors hover:bg-secondary focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-haspopup="dialog"
+                  aria-expanded={datePickerOpen}
+                  onClick={() => setDatePickerOpen(true)}
+                  className="flex items-center gap-1 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold tabular-nums transition-colors hover:bg-secondary focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Calendar aria-hidden="true" className="size-4 text-muted-foreground" />
                   {formatShortDate(date)}
-                  <span className="text-xs text-muted-foreground">({weekday})</span>
+                  <span className="text-[10px] font-normal text-muted-foreground">
+                    ({relative || weekday})
+                  </span>
+                  <ChevronRight aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                </button>
+                <button
+                  type="button"
+                  data-testid="trx-time-input"
+                  aria-haspopup="dialog"
+                  aria-label="Waktu transaksi"
+                  onClick={() => setTimePickerOpen(true)}
+                  className="flex items-center gap-1 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold tabular-nums transition-colors hover:bg-secondary focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {time}
+                  <ChevronRight aria-hidden="true" className="size-3.5 text-muted-foreground" />
                 </button>
               </div>
             </div>
 
-            {datePickerOpen && (
-              <div className="border-t p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <button
-                    type="button"
-                    aria-label="Bulan sebelumnya"
-                    onClick={() =>
-                      setDatePickerCursor((c) => new Date(c.getFullYear(), c.getMonth() - 1, 1))
-                    }
-                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  >
-                    <ChevronLeft className="size-4" />
-                  </button>
-                  <span className="text-sm font-medium" data-testid="date-picker-month-label">
-                    {datePickerCursor.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Bulan selanjutnya"
-                    onClick={() =>
-                      setDatePickerCursor((c) => new Date(c.getFullYear(), c.getMonth() + 1, 1))
-                    }
-                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  >
-                    <ChevronRight className="size-4" />
-                  </button>
-                </div>
-                <div className="mb-2 grid grid-cols-7 gap-1">
-                  {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((day) => (
-                    <span
-                      key={day}
-                      className="py-1 text-center text-xs font-medium text-muted-foreground"
-                    >
-                      {day}
-                    </span>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {(() => {
-                    const year = datePickerCursor.getFullYear()
-                    const month = datePickerCursor.getMonth()
-                    const firstDay = new Date(year, month, 1).getDay()
-                    const daysInMonth = new Date(year, month + 1, 0).getDate()
-                    const today = todayIso()
-                    const cells: React.ReactNode[] = []
-                    for (let i = 0; i < firstDay; i++) cells.push(<span key={`empty-${i}`} />)
-                    for (let d = 1; d <= daysInMonth; d++) {
-                      const iso = toIso(new Date(year, month, d))
-                      const isToday = iso === today
-                      const isSelected = iso === date
-                      cells.push(
-                        <button
-                          key={iso}
-                          type="button"
-                          onClick={() => {
-                            setDate(iso)
-                            setDatePickerOpen(false)
-                          }}
-                          className={cn(
-                            'flex size-8 items-center justify-center rounded-full text-sm transition-colors',
-                            isSelected
-                              ? 'bg-primary font-semibold text-primary-foreground'
-                              : isToday
-                                ? 'border border-primary font-medium text-primary'
-                                : 'hover:bg-secondary',
-                          )}
-                        >
-                          {d}
-                        </button>,
-                      )
-                    }
-                    return cells
-                  })()}
-                </div>
-                <div className="mt-3 flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setDate(todayIso())
-                      setDatePickerOpen(false)
-                    }}
-                  >
-                    Hari ini
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDatePickerOpen(false)}
-                  >
-                    Tutup
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Berulang/cicil */}
-            <button
-              type="button"
-              data-testid="trx-recurring-button"
-              onClick={() => setRecurringOpen(true)}
-              className="flex w-full items-center justify-between gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-            >
-              <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CalendarClock aria-hidden="true" className="size-4" />
-                Berulang/cicil
-              </span>
-              <span
-                className={cn('truncate text-sm', recurLabel ? 'font-medium' : 'text-muted-foreground')}
-                data-testid="trx-recurring-value"
-              >
-                {recurLabel ?? 'Tidak ada'}
-              </span>
-            </button>
+            <FieldRow
+              testId="trx-recurring-button"
+              valueTestId="trx-recurring-value"
+              icon={<CalendarClock aria-hidden="true" className="size-4" />}
+              label={t.transaction.repeat}
+              value={recurLabel}
+              placeholder={t.repeat.frequencies.none}
+              onAction={() => setRecurringOpen(true)}
+            />
           </div>
+
+          <DatePickerSheet
+            open={datePickerOpen}
+            value={date}
+            onSelect={setDate}
+            onClose={() => setDatePickerOpen(false)}
+            title="Tanggal transaksi"
+          />
+          <TimePickerSheet
+            open={timePickerOpen}
+            value={time}
+            onSelect={setTime}
+            onClose={() => setTimePickerOpen(false)}
+          />
+
+          <AmountSheet
+            open={feeSheetOpen}
+            title="Biaya transfer"
+            initialRaw={fee > 0 ? String(fee) : ''}
+            currency={currency}
+            onDone={(value) => {
+              setFee(value)
+              setFeeSheetOpen(false)
+            }}
+            onClose={() => setFeeSheetOpen(false)}
+            testId="trx-fee-sheet"
+            valueTestId="trx-fee-sheet-value"
+            doneTestId="trx-fee-sheet-done"
+            padTestIdPrefix="fee-numpad-"
+            hint="Biaya admin yang ikut mengurangi aset sumber."
+          />
 
           {/* Nominal + pembayaran */}
           {showsCategory ? (
-            <div className="rounded-2xl border bg-card">
-              <button
-                type="button"
-                data-testid="trx-category-button"
-                
-                onClick={() => setCategoryPickerOpen(true)}
-                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              >
-                <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Tag aria-hidden="true" className="size-4" />
-                  Kategori
-                </span>
-                <span
-                  data-testid="trx-category-value"
-                  className={cn(
-                    'truncate text-sm',
-                    categoryLabel ? 'font-medium' : 'text-muted-foreground',
-                  )}
-                >
-                  {categoryLabel ?? 'Pilih kategori'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                data-testid="trx-asset-button"
-                
-                onClick={() => setAssetPicker('from')}
-                className="flex w-full items-center justify-between gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              >
-                <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Wallet aria-hidden="true" className="size-4" />
-                  Aset
-                </span>
-                <span
-                  data-testid="trx-asset-value"
-                  className={cn('truncate text-sm', assetName ? 'font-medium' : 'text-muted-foreground')}
-                >
-                  {assetName ?? 'Pilih aset'}
-                </span>
-              </button>
+            <div className="overflow-hidden rounded-2xl border bg-card">
+              <FieldRow
+                testId="trx-category-button"
+                valueTestId="trx-category-value"
+                icon={<Tag aria-hidden="true" className="size-4" />}
+                label={t.transaction.category}
+                value={categoryLabel}
+                placeholder={t.budget.selectCategory}
+                divided={false}
+                onAction={() => setCategoryPickerOpen(true)}
+              />
+              <FieldRow
+                testId="trx-asset-button"
+                valueTestId="trx-asset-value"
+                icon={<Wallet aria-hidden="true" className="size-4" />}
+                label={t.transaction.account}
+                value={assetName}
+                placeholder="Pilih aset"
+                onAction={() => setAssetPicker('from')}
+              />
             </div>
           ) : (
-            <div className="rounded-2xl border bg-card">
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <label htmlFor="trx-fee-input" className="text-sm text-muted-foreground">
-                  Biaya
-                </label>
-                <input
-                  id="trx-fee-input"
-                  inputMode="decimal"
-                  data-testid="trx-fee-input"
-                  value={feeRaw}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/[^\d.,-]/g, '')
-                    setFeeRaw(formatTypingAmount(raw, currency))
-                  }}
-                  placeholder="0"
-                  className="w-28 rounded-lg border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
+            <div className="overflow-hidden rounded-2xl border bg-card">
+              <FieldRow
+                testId="trx-fee-button"
+                valueTestId="trx-fee-value"
+                icon={<Coins aria-hidden="true" className="size-4" />}
+                label={t.transaction.fee}
+                value={fee > 0 ? formatCurrency(fee, currency) : null}
+                placeholder={formatCurrency(0, currency)}
+                divided={false}
+                onAction={() => setFeeSheetOpen(true)}
+              />
 
-              <button
-                type="button"
-                data-testid="trx-from-asset-button"
-                
-                onClick={() => setAssetPicker('from')}
-                className="flex w-full items-center justify-between gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              >
-                <span className="text-sm text-muted-foreground">Uang keluar</span>
-                <span
-                  data-testid="trx-from-asset-value"
-                  className={cn('truncate text-sm', assetName ? 'font-medium' : 'text-muted-foreground')}
-                >
-                  {assetName ?? 'Pilih aset'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                data-testid="trx-to-asset-button"
-                
-                onClick={() => setAssetPicker('to')}
-                className="flex w-full items-center justify-between gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              >
-                <span className="text-sm text-muted-foreground">Uang masuk</span>
-                <span
-                  data-testid="trx-to-asset-value"
-                  className={cn('truncate text-sm', toAssetName ? 'font-medium' : 'text-muted-foreground')}
-                >
-                  {toAssetName ?? 'Pilih aset'}
-                </span>
-              </button>
+              <FieldRow
+                testId="trx-from-asset-button"
+                valueTestId="trx-from-asset-value"
+                icon={<Wallet aria-hidden="true" className="size-4" />}
+                label={t.transaction.fromAccount}
+                value={assetName}
+                placeholder="Pilih aset"
+                onAction={() => setAssetPicker('from')}
+              />
+              <FieldRow
+                testId="trx-to-asset-button"
+                valueTestId="trx-to-asset-value"
+                icon={<Wallet aria-hidden="true" className="size-4" />}
+                label={t.transaction.toAccount}
+                value={toAssetName}
+                placeholder="Pilih aset"
+                onAction={() => setAssetPicker('to')}
+              />
             </div>
           )}
 
-          {/* Catatan & deskripsi */}
-          <div className="rounded-2xl border bg-card">
-            <div className="flex items-center gap-3 px-4 py-3">
-              <label htmlFor="trx-note-input" className="w-20 shrink-0 text-sm text-muted-foreground">
+          {/* Catatan, deskripsi, tag & foto */}
+          <div className="overflow-hidden rounded-2xl border bg-card">
+            <div className="flex min-h-12 items-center gap-2.5 px-3.5 py-2">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
+                <PencilLine aria-hidden="true" className="size-3.5" />
+              </span>
+              <label htmlFor="trx-note-input" className="shrink-0 text-sm text-muted-foreground">
                 Catatan
               </label>
               <input
@@ -715,13 +696,16 @@ export function TransactionForm({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Catatan singkat"
-                className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <div className="flex items-start gap-3 border-t px-4 py-3">
+            <div className="flex items-start gap-2.5 border-t px-3.5 py-2">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
+                <AlignLeft aria-hidden="true" className="size-3.5" />
+              </span>
               <label
                 htmlFor="trx-description-input"
-                className="w-20 shrink-0 pt-1.5 text-sm text-muted-foreground"
+                className="shrink-0 pt-1 text-sm text-muted-foreground"
               >
                 Deskripsi
               </label>
@@ -732,29 +716,38 @@ export function TransactionForm({
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
                 placeholder="Deskripsi"
-                className="min-w-0 flex-1 resize-none rounded-lg border border-input bg-background px-2 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-w-0 flex-1 resize-none rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <div className="flex items-center gap-3 border-t px-4 py-3">
-              <span className="w-20 shrink-0 text-sm text-muted-foreground">Tag</span>
+            <div className="flex min-h-12 items-center gap-2.5 border-t px-3.5 py-2">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
+                <Tags aria-hidden="true" className="size-3.5" />
+              </span>
+              <span className="shrink-0 text-sm text-muted-foreground">Tag</span>
               <button
                 type="button"
                 data-testid="trx-tag-button"
                 onClick={() => setTagPickerOpen(true)}
-                className="flex min-w-0 flex-1 items-center justify-end gap-1 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-w-0 flex-1 items-center justify-end gap-1.5 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs transition-colors hover:bg-secondary focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span
                   data-testid="trx-tag-value"
-                  className={cn('truncate', tagLabel ? 'font-medium' : 'text-muted-foreground')}
+                  className={cn(
+                    'truncate',
+                    tagLabel ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                  )}
                 >
                   {tagLabel ?? 'Pilih tag'}
                 </span>
-                <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
             </div>
-            <div className="flex items-center gap-3 border-t px-4 py-3">
-              <span className="w-20 shrink-0 text-sm text-muted-foreground">Foto</span>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <div className="flex min-h-12 items-center gap-2.5 border-t px-3.5 py-2">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
+                <ImageIcon aria-hidden="true" className="size-3.5" />
+              </span>
+              <span className="shrink-0 text-sm text-muted-foreground">Foto</span>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
                 {allPhotos.map((photo) => (
                   <span key={photo.uid} className="relative">
                     <button
@@ -803,7 +796,7 @@ export function TransactionForm({
                   type="button"
                   data-testid="trx-photo-button"
                   onClick={() => fileRef.current?.click()}
-                  className="flex size-14 items-center justify-center rounded-lg border border-dashed text-muted-foreground transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex size-14 items-center justify-center rounded-xl border border-dashed text-muted-foreground transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <Camera aria-hidden="true" className="size-5" />
                   <span className="sr-only">Tambah foto</span>
@@ -855,57 +848,69 @@ export function TransactionForm({
       </div>
 
       {/* Numpad */}
-      <div className="border-t bg-card/75 px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
+      <div className="border-t bg-card/80 px-3 pt-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
         <div className="mx-auto w-full max-w-lg">
-          <div className="mb-2 flex items-center justify-between gap-2">
+          {/* Total display — always visible, tap to reopen numpad */}
+          <button
+            type="button"
+            aria-label="Buka papan angka"
+            onClick={() => setNumpadOpen(true)}
+            className="mb-2 flex w-full items-end justify-between gap-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">Total</p>
-              <p
-                className="truncate text-xl font-bold tabular-nums md:text-2xl"
-                data-testid="trx-amount-display"
-              >
-                {formatTypingAmount(raw, currency)}
+              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Total
               </p>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span
+                  className="rounded-lg bg-secondary/60 px-2 py-0.5 text-xs font-semibold tabular-nums"
+                  data-testid="trx-currency-label"
+                  title={`Mata uang utama: ${currency?.ISO ?? 'IDR'}`}
+                >
+                  {currency?.SYMBOL ?? 'Rp'}
+                </span>
+                <p
+                  className="min-w-0 truncate text-2xl leading-none font-bold tabular-nums md:text-3xl"
+                  data-testid="trx-amount-display"
+                >
+                  {(negative && Number(raw) > 0 ? '-' : '') + formatTypingAmount(raw, currency)}
+                </p>
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span
-                className="rounded-lg border bg-secondary/60 px-3 py-1.5 text-sm font-semibold tabular-nums"
-                data-testid="trx-currency-label"
-                title={`Mata uang utama: ${currency?.ISO ?? 'IDR'}`}
-              >
-                {currency?.SYMBOL ?? 'Rp'}
-              </span>
-              <NumpadBackspace
-                onKey={() => setRaw((current) => applyNumpadKey(current, 'back', decimals))}
-              />
-            </div>
-          </div>
+          </button>
 
-          <Numpad
-            decimals={decimals}
-            showBackspace={false}
-            onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
-          />
+          {numpadOpen && (
+            <Numpad
+              decimals={decimals}
+              showBackspace={false}
+              onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
+              showMinus={type !== 'transfer'}
+              negative={negative}
+              onMinus={() => setNegative((n) => !n)}
+              showDone={true}
+              onDone={() => setNumpadOpen(false)}
+            />
+          )}
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-2.5 flex gap-2">
             {!isEdit && (
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 flex-1"
+                className="h-10 flex-1 text-sm font-semibold"
                 data-testid="trx-save-next"
                 onClick={() => save(true)}
               >
-                Lanjut
+                {t.common.continue}
               </Button>
             )}
             <Button
               type="button"
-              className="h-11 flex-1"
+              className="h-10 flex-1 text-sm font-semibold"
               data-testid="trx-save"
               onClick={() => save(false)}
             >
-              Menyimpan
+              {t.common.save}
             </Button>
           </div>
         </div>
@@ -1023,7 +1028,7 @@ export function TransactionForm({
         label="Salin transaksi"
         testId="trx-copy-dialog"
       >
-        <div className="mx-auto w-full max-w-md overflow-hidden rounded-2xl border bg-card p-4 shadow-xl">
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-4">
           <h2 className="text-base font-bold">Salin transaksi</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Pilih tanggal untuk transaksi salinan.

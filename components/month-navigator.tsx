@@ -3,7 +3,8 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { MONTHS, shiftMonth, type MonthValue } from '@/lib/month'
+import { getLocalizedMonths, MONTHS, shiftMonth, type MonthValue } from '@/lib/month'
+import { useTranslation } from '@/components/language-provider'
 
 // Re-exported so existing imports keep working (source of truth: lib/month.ts).
 export { MONTHS, shiftMonth }
@@ -22,12 +23,13 @@ type MonthNavigatorProps = {
 
 export function MonthNavigator({ value, today, onChange, variant = 'month' }: MonthNavigatorProps) {
   const isYear = variant === 'year'
+  const { language } = useTranslation()
+  const localizedMonths = getLocalizedMonths(language)
   const [open, setOpen] = useState(false)
   const [pickerYear, setPickerYear] = useState(value.year)
   const popupRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popupId = useId()
-
   useEffect(() => {
     if (!open) return
     const handlePointerDown = (event: PointerEvent) => {
@@ -61,8 +63,8 @@ export function MonthNavigator({ value, today, onChange, variant = 'month' }: Mo
     triggerRef.current?.focus()
   }
 
-  const label = isYear ? String(value.year) : `${MONTHS[value.month].short} ${value.year}`
-  const fullLabel = isYear ? String(value.year) : `${MONTHS[value.month].full} ${value.year}`
+  const label = isYear ? String(value.year) : `${localizedMonths[value.month].short} ${value.year}`
+  const fullLabel = isYear ? String(value.year) : `${localizedMonths[value.month].full} ${value.year}`
   const step = isYear ? 12 : 1
 
   return (
@@ -178,7 +180,7 @@ export function MonthNavigator({ value, today, onChange, variant = 'month' }: Mo
             </ul>
           ) : (
             <ul className="grid grid-cols-4 gap-1.5 md:gap-2">
-              {MONTHS.map((month, index) => {
+              {localizedMonths.map((month, index) => {
                 const isSelected = value.year === pickerYear && value.month === index
                 const isCurrent = today.year === pickerYear && today.month === index
                 return (

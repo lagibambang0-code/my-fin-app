@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, HelpCircle, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { Overlay } from '@/components/ui/overlay'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { BookmarkScreen } from '@/components/bookmark-screen'
@@ -38,6 +39,7 @@ const REFLECT_OPTIONS: { value: ReflectMode; label: string }[] = [
 /** "Kelola berulang" (ConfigRepeatList) — PRD-05 §3.1–3.4. */
 export function RepeatSettingsScreen() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [mode, setMode] = useState<ReflectMode>('actual_date')
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [pendingMode, setPendingMode] = useState<ReflectMode | null>(null)
@@ -110,9 +112,9 @@ export function RepeatSettingsScreen() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Lainnya
+              {t.nav.more}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">Kelola berulang</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.repeat.title}</h1>
           </div>
           <Button
             variant="ghost"
@@ -130,10 +132,9 @@ export function RepeatSettingsScreen() {
         <div className="flex items-start gap-2 rounded-xl border border-dashed px-3 py-3 text-xs text-muted-foreground">
           <HelpCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <div className="space-y-1">
-            <p className="font-medium text-foreground">Bagaimana cara mengatur transaksi berulang?</p>
+            <p className="font-medium text-foreground">{t.repeat.helpTitle}</p>
             <p>
-              Anda dapat menambahkan pendapatan, pengeluaran, dan transaksi transfer “repetitive”
-              dengan mengetuk ikon daur ulang (Rep/Inst.).
+              {t.repeat.helpDesc}
             </p>
           </div>
         </div>
@@ -145,12 +146,12 @@ export function RepeatSettingsScreen() {
           className="flex w-full items-start justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="min-w-0">
-            <span className="block text-sm">Waktu peninjauan ulang</span>
+            <span className="block text-sm">{t.repeat.reviewTime}</span>
             <span
               className="mt-0.5 block truncate text-xs text-muted-foreground"
               data-testid="repeat-review-value"
             >
-              {REFLECT_OPTIONS.find((o) => o.value === mode)?.label}
+              {mode === 'first_of_month' ? t.repeat.firstOfMonth : t.repeat.actualDate}
             </span>
           </span>
           <ChevronRight
@@ -168,8 +169,8 @@ export function RepeatSettingsScreen() {
         label="Waktu peninjauan ulang"
         testId="repeat-review-sheet"
       >
-        <div className="mx-auto w-full max-w-md rounded-2xl border bg-card p-2 shadow-xl">
-          <h2 className="px-3 py-2 text-base font-bold">Waktu peninjauan ulang</h2>
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card p-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-3">
+          <h2 className="px-3 py-2 text-base font-bold">{t.repeat.reviewTime}</h2>
           {REFLECT_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -197,7 +198,7 @@ export function RepeatSettingsScreen() {
               >
                 {mode === option.value && <span className="size-2.5 rounded-full bg-primary" />}
               </span>
-              <span className="text-sm font-medium">{option.label}</span>
+              <span className="text-sm font-medium">{option.value === 'first_of_month' ? t.repeat.firstOfMonth : t.repeat.actualDate}</span>
             </button>
           ))}
         </div>
@@ -205,11 +206,10 @@ export function RepeatSettingsScreen() {
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Konfirmasi"
-        description={`Transaksi berulang diterapkan pada hari pertama setiap bulan. Transaksi berulang hingga ${formatDayMonthShort(monthEnd)} direfleksikan di awal. Apakah Anda ingin melanjutkan?`}
-        confirmLabel="YA"
-        cancelLabel="TIDAK"
-        destructive={false}
+        title={t.repeat.reviewTime}
+        description={t.repeat.confirmFirstOfMonth}
+        confirmLabel={t.common.confirm}
+        cancelLabel={t.common.refuse}
         onConfirm={() => {
           if (pendingMode) void applyMode(pendingMode)
         }}

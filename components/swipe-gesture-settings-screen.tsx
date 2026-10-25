@@ -1,24 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Settings2, SlidersHorizontal } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronLeft, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { TabPage } from '@/components/tab-page'
+import { useTranslation } from '@/components/language-provider'
 import { initDB, getSettingByKey, setSetting } from '@/lib/db'
 import { cn } from '@/lib/utils'
 
-type SwipeMode = 'change_date' | 'change_tab' | 'none'
+type SwipeMode = 'change_date' | 'none'
 
 const SWIPE_OPTIONS: Array<{ value: SwipeMode; label: string; description: string }> = [
   {
     value: 'change_date',
     label: 'Ubah periode',
     description: 'Geser mengganti periode (Bulan/Tahun) di layar Transaksi & Statistik',
-  },
-  {
-    value: 'change_tab',
-    label: 'Ubah tab',
-    description: 'Geser berpindah di antara tab Transaksi, Statistik, Aset, Lainnya',
   },
   {
     value: 'none',
@@ -32,38 +28,53 @@ const SWIPE_OPTIONS: Array<{ value: SwipeMode; label: string; description: strin
  * does in the app (PRD-06 §2.7).
  */
 export function SwipeGestureSettingsScreen() {
+  const router = useRouter()
+  const { t } = useTranslation()
   const [mode, setMode] = useState<SwipeMode>('change_date')
-  const [saving, setSaving] = useState(false)
-
   const load = useCallback(async () => {
     await initDB()
     const setting = await getSettingByKey('swipe_gesture')
-    if (setting?.ZDATA) {
+    if (setting?.ZDATA && (setting.ZDATA === 'change_date' || setting.ZDATA === 'none')) {
       setMode(setting.ZDATA as SwipeMode)
     }
   }, [])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
-  const handleSave = async () => {
-    try {
-      setSaving(true)
-      await setSetting('swipe_gesture', mode)
-    } finally {
-      setSaving(false)
-    }
-  }
+  const handleSelect = useCallback(async (value: SwipeMode) => {
+    setMode(value)
+    await setSetting('swipe_gesture', value)
+  }, [])
+
 
   return (
-    <TabPage title="Pengaturan geser" subtitle="Atur perilaku geser horizontal" icon={SlidersHorizontal}>
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6 md:px-10 md:pb-8">
+    <div className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-30 bg-background/80 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-4 backdrop-blur-xl md:px-10 md:pt-6 md:pb-8">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Kembali"
+            data-testid="swipe-back"
+            onClick={() => router.back()}
+          >
+            <ChevronLeft className="size-5" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+              {t.nav.more}
+            </p>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.settings.swipe}</h1>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6 md:px-10 md:pb-8" data-testid="swipe-settings">
         <div className="rounded-xl border border-dashed px-3 py-3 text-xs text-pretty text-muted-foreground">
           <p>
-            Pilih apa yang terjadi saat Anda menggeser secara horizontal di layar
-            utama. Geser ke kiri/kanan di Transaksi dan Statistik akan mengikuti
-            pilihan ini.
+            {t.swipe.helpText}
           </p>
         </div>
 
@@ -71,9 +82,10 @@ export function SwipeGestureSettingsScreen() {
           {SWIPE_OPTIONS.map((option) => (
             <button
               key={option.value}
-              onClick={() => setMode(option.value)}
+              data-testid={`swipe-option-${option.value}`}
+              onClick={() => void handleSelect(option.value)}
               className={cn(
-                'w-full text-left rounded-xl border p-4 transition-colors',
+                'w-full rounded-2xl border px-4 py-3.5 text-left transition-colors',
                 mode === option.value
                   ? 'border-primary bg-primary/5'
                   : 'border-border hover:bg-muted/50',
@@ -91,9 +103,11 @@ export function SwipeGestureSettingsScreen() {
                   <Settings2 className="size-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{option.label}</p>
+                  <p className="text-sm font-medium">
+                    {option.value === 'change_date' ? t.swipe.changePeriod : t.swipe.disable}
+                  </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {option.description}
+                    {option.value === 'change_date' ? t.swipe.changePeriodDesc : t.swipe.disableDesc}
                   </p>
                 </div>
                 {mode === option.value && (
@@ -103,13 +117,7 @@ export function SwipeGestureSettingsScreen() {
             </button>
           ))}
         </div>
-
-        <div className="mt-4 pt-4 border-t">
-          <Button className="h-12 w-full" onClick={handleSave} disabled={saving}>
-            {saving ? 'Menyimpan...' : 'Simpan'}
-          </Button>
-        </div>
       </div>
-    </TabPage>
+    </div>
   )
 }

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { FullScreenSheet, Overlay } from '@/components/ui/overlay'
 import { BudgetAmountSheet } from '@/components/budget-amount-sheet'
 import type { Budget, Category, Currency } from '@/lib/db'
@@ -41,26 +42,61 @@ export function BudgetFormSheet({
   onClose,
   onSaved,
 }: BudgetFormSheetProps) {
-  const [target, setTarget] = useState<string>('')
-  const [amount, setAmount] = useState(0)
+  const { t } = useTranslation()
+  const [target, setTarget] = useState<string | null>(budget?.targetUid ?? null)
+  const [amount, setAmount] = useState(initialAmount)
   const [padOpen, setPadOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
+   const [saving, setSaving] = useState(false)
+  const [selectedMain, setSelectedMain] = useState<string | null>(null)
+
+  const mainCategories = categories.filter((c) => c.TYPE === 1 && c.STATUS !== 2 && !c.pUid)
 
   useEffect(() => {
     if (!open) return
-    setTarget(budget ? (budget.IS_TOTAL === 1 ? ALL : budget.targetUid) : '')
+    const initTarget = budget ? (budget.IS_TOTAL === 1 ? ALL : budget.targetUid) : ''
+    setTarget(initTarget)
     setAmount(budget ? initialAmount : 0)
     setPadOpen(false)
     setAlertOpen(false)
     setSaving(false)
-  }, [open, budget, initialAmount])
+    if (initTarget && initTarget !== ALL) {
+      const found = categories.find((c) => c.uid === initTarget)
+      if (found?.STATUS === 2 && found.pUid) {
+        setSelectedMain(found.pUid)
+      } else if (found) {
+        setSelectedMain(found.uid)
+      }
+    } else {
+      setSelectedMain(null)
+    }
+  }, [open, budget, initialAmount, categories])
 
+  const targetCategory = target && target !== ALL ? categories.find((c) => c.uid === target) : null
   const targetLabel = target
     ? target === ALL
       ? '· Semua'
-      : (categories.find((c) => c.uid === target)?.NAME ?? '—')
+      : targetCategory
+        ? targetCategory.STATUS === 2 && targetCategory.pUid
+          ? `${categories.find((c) => c.uid === targetCategory.pUid)?.NAME ?? ''} › ${targetCategory.NAME}`
+          : targetCategory.NAME
+        : '—'
     : null
+
+  const selectTarget = (uid: string) => {
+    setTarget(uid)
+    setPadOpen(true)
+  }
+
+  const onMainCategoryClick = (uid: string) => {
+    if (uid === ALL) {
+      setSelectedMain(null)
+      selectTarget(ALL)
+      return
+    }
+    setSelectedMain(uid)
+    setTarget(uid)
+  }
 
   const submit = async () => {
     if (!target) {
@@ -79,8 +115,8 @@ export function BudgetFormSheet({
 
   return (
     <>
-      <FullScreenSheet open={open} testId="budget-form">
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/85 px-3 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-xl">
+      <FullScreenSheet open={open} onClose={onClose} testId="budget-form" variant="drawer">
+      <header className="flex items-center gap-2 border-b px-3 py-2.5">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -91,7 +127,7 @@ export function BudgetFormSheet({
             <ChevronLeft aria-hidden="true" className="size-5" />
           </Button>
           <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">
-            {budget ? 'Ubah anggaran' : 'Tambah anggaran'}
+            {budget ? t.budget.editBudget : t.budget.addBudget}
           </h1>
         </header>
 
@@ -99,7 +135,7 @@ export function BudgetFormSheet({
           <div className="mx-auto w-full max-w-lg space-y-4 px-4 py-4">
             <div className="rounded-2xl border bg-card">
               <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-                <span className="text-sm text-muted-foreground">Kategori</span>
+                <span className="text-sm text-muted-foreground">{t.transaction.category}</span>
                 <span
                   data-testid="budget-category-value"
                   className={cn(
@@ -107,7 +143,7 @@ export function BudgetFormSheet({
                     targetLabel ? 'font-medium' : 'text-muted-foreground',
                   )}
                 >
-                  {targetLabel ?? 'Pilih kategori'}
+                  {targetLabel ?? t.budget.selectCategory}
                 </span>
               </div>
               <button
@@ -137,41 +173,102 @@ export function BudgetFormSheet({
             </Button>
 
             <section className="rounded-2xl border bg-card p-3">
-              <h2 className="px-1 pb-2 text-sm font-semibold">Kategori</h2>
-              <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  data-testid="budget-category-option-all"
-                  aria-pressed={target === ALL}
-                  onClick={() => setTarget(ALL)}
-                  className={cn(
-                    'flex min-h-16 items-center justify-center rounded-xl border px-2 py-3 text-center text-xs font-medium transition-colors',
-                    'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    target === ALL
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'bg-card text-foreground',
-                  )}
-                >
-                  · Semua
-                </button>
-                {categories.map((category) => (
+              <div className="flex items-center justify-between pb-2">
+                <h2 className="px-1 text-sm font-semibold">Pilih Kategori</h2>
+                <span className="text-xs text-muted-foreground">Kategori utama & sub</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {/* Kolom Kiri: Kategori Utama */}
+                <div className="flex flex-col gap-1 max-h-80 overflow-y-auto pr-1">
                   <button
-                    key={category.uid}
                     type="button"
-                    data-testid={`budget-category-option-${category.uid}`}
-                    aria-pressed={target === category.uid}
-                    onClick={() => setTarget(category.uid)}
+                    data-testid="budget-category-option-all"
+                    aria-pressed={target === ALL}
+                    onClick={() => onMainCategoryClick(ALL)}
                     className={cn(
-                      'flex min-h-16 items-center justify-center rounded-xl border px-2 py-3 text-center text-xs font-medium transition-colors',
+                      'flex items-center justify-start rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors',
                       'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      target === category.uid
-                        ? 'border-primary bg-primary/10 text-primary'
+                      target === ALL
+                        ? 'border-primary bg-primary/10 text-primary font-semibold'
                         : 'bg-card text-foreground',
                     )}
                   >
-                    <span className="line-clamp-2">{category.NAME}</span>
+                    {t.common.all}
                   </button>
-                ))}
+                  {mainCategories.map((category) => (
+                    <button
+                      key={category.uid}
+                       type="button"
+                      data-testid={`budget-category-option-${category.uid}`}
+                      aria-pressed={selectedMain === category.uid}
+                      onClick={() => onMainCategoryClick(category.uid)}
+                      className={cn(
+                        'flex items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors',
+                        'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        selectedMain === category.uid
+                          ? 'border-primary bg-primary/10 text-primary font-semibold'
+                          : 'bg-card text-foreground',
+                      )}
+                    >
+                      <span className="truncate">{category.NAME}</span>
+                      <ChevronRight className="size-3.5 shrink-0 opacity-50" />
+                    </button>
+                  ))}
+                </div>
+
+                {/* Kolom Kanan: Sub-kategori */}
+                <div className="flex flex-col gap-1 max-h-80 overflow-y-auto pl-1 border-l">
+                  {selectedMain ? (
+                    <>
+                      {(() => {
+                        const activeMain = categories.find((c) => c.uid === selectedMain)
+                        const subList = categories.filter((c) => c.pUid === selectedMain && c.C_IS_DEL === 0)
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              data-testid={`budget-subcategory-option-all-${selectedMain}`}
+                              aria-pressed={target === selectedMain}
+                              onClick={() => selectTarget(selectedMain)}
+                              className={cn(
+                                'flex items-center justify-start rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors',
+                                'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                target === selectedMain
+                                  ? 'border-primary bg-primary text-primary-foreground font-semibold'
+                                  : 'bg-muted/40 text-foreground',
+                              )}
+                            >
+                              <span className="truncate">{activeMain?.NAME} (Semua)</span>
+                            </button>
+
+                            {subList.map((sub) => (
+                              <button
+                                key={sub.uid}
+                                type="button"
+                                data-testid={`budget-subcategory-option-${sub.uid}`}
+                                aria-pressed={target === sub.uid}
+                                onClick={() => selectTarget(sub.uid)}
+                                className={cn(
+                                  'flex items-center justify-start rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors',
+                                  'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                  target === sub.uid
+                                    ? 'border-primary bg-primary/10 text-primary font-semibold'
+                                    : 'bg-card text-foreground',
+                                )}
+                              >
+                                <span className="truncate">{sub.NAME}</span>
+                              </button>
+                            ))}
+                          </>
+                        )
+                      })()}
+                    </>
+                  ) : (
+                    <div className="flex h-36 items-center justify-center p-3 text-center text-xs text-muted-foreground">
+                      Pilih kategori utama di sebelah kiri untuk melihat sub-kategori
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           </div>
@@ -195,13 +292,13 @@ export function BudgetFormSheet({
         open={alertOpen}
         onClose={() => setAlertOpen(false)}
         align="center"
-        label="Silahkan pilih kategori"
+        label={t.budget.alertSelectCategory}
         testId="budget-category-alert"
       >
         <div className="mx-auto w-full max-w-sm rounded-2xl border bg-card p-5 shadow-xl">
-          <h2 className="text-base font-bold">Silahkan pilih kategori</h2>
+          <h2 className="text-base font-bold">{t.budget.alertSelectCategory}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pilih salah satu kategori (atau “· Semua”) sebelum menyimpan anggaran.
+            {t.budget.alertSelectCategoryDesc}
           </p>
           <Button
             type="button"
@@ -209,7 +306,7 @@ export function BudgetFormSheet({
             data-testid="budget-category-alert-ok"
             onClick={() => setAlertOpen(false)}
           >
-            YA
+            {t.common.confirm}
           </Button>
         </div>
       </Overlay>

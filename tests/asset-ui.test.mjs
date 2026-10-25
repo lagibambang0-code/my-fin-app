@@ -214,6 +214,21 @@ async function main() {
       )
     })
 
+    await test('TC-ASE-01b: ketik saldo → pemisah ribuan mengikuti tiap ketukan', async () => {
+      await click(page, '[data-testid="asset-edit-button"]')
+      await click(page, '[data-testid="asset-menu-add"]')
+      await waitFor(page, '[data-testid="asset-form"]')
+
+      // Per-keystroke typing: the displayed text used to be fed back as if it
+      // were the raw digit string, capping grouping after the 4th digit.
+      const totalValue = () => page.$eval('#asset-total-input', (el) => el.value)
+      await page.type('#asset-total-input', '1500000')
+      assert((await totalValue()) === '1.500.000', `total should regroup, got ${await totalValue()}`)
+
+      await click(page, '[aria-label="Tutup"]')
+      await waitGone(page, '[data-testid="asset-form"]')
+    })
+
     await test('TC-ASE-01: ringkasan menambahkan saldo aset baru', async () => {
       const assets = await textOf(page, '[data-testid="asset-summary-assets"]')
       assert(assets.includes('1.500.000'), `expected 1.500.000 in Aset, got "${assets}"`)
@@ -247,6 +262,11 @@ async function main() {
       await waitFor(page, '[data-testid="asset-form"]')
       await fillAssetForm(page, { name: 'Tabungan Haji', total: '2000000' })
       await click(page, '[data-testid="asset-save"]')
+      await sleep(300)
+      const diffDialog = await page.$('[data-testid="confirm-dialog"]')
+      if (diffDialog) {
+        await clickText(page, 'TIDAK')
+      }
       await waitGone(page, '[data-testid="asset-form"]')
       await gotoAssets(page)
       assert(await exists(page, '[data-testid="asset-row-Tabungan Haji"]'), 'rename failed')

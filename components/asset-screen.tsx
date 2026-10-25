@@ -8,11 +8,12 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  Pencil,
+  MoreVertical,
   Plus,
   Trash2,
   Wallet,
 } from 'lucide-react'
+import { useTranslation } from '@/components/language-provider'
 import { Button } from '@/components/ui/button'
 import { Overlay } from '@/components/ui/overlay'
 import { AssetForm } from '@/components/asset-form'
@@ -37,8 +38,38 @@ import {
 } from '@/lib/db'
 import { computeCardCycles, isCardGroup } from '@/lib/asset-utils'
 import { formatCurrency, formatDayMonth } from '@/lib/format'
+
+const GROUP_NAMES_EN_TO_ID: Record<string, string> = {
+  Cash: 'Tunai',
+  Accounts: 'Bank',
+  Card: 'Kartu',
+  'Debit Card': 'Kartu debit',
+  Savings: 'Tabungan',
+  'Top-Up/Prepaid': 'Top-up / Prabayar',
+  Investments: 'Investasi',
+  Overdrafts: 'Cerukan',
+  Loan: 'Pinjaman',
+  Insurance: 'Asuransi',
+  Others: 'Lainnya',
+}
+
+const GROUP_NAMES_ID_TO_EN: Record<string, string> = {
+  Tunai: 'Cash',
+  Bank: 'Accounts',
+  Kartu: 'Card',
+  'Kartu debit': 'Debit Card',
+  Tabungan: 'Savings',
+  'Top-up / Prabayar': 'Top-Up/Prepaid',
+  Investasi: 'Investments',
+  Cerukan: 'Overdrafts',
+  Pinjaman: 'Loan',
+  Asuransi: 'Insurance',
+  Lainnya: 'Others',
+}
+
 export function AssetScreen() {
   const router = useRouter()
+  const { t, language } = useTranslation()
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [summary, setSummary] = useState<AssetSummary>({
@@ -120,9 +151,9 @@ export function AssetScreen() {
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="text-xs font-medium tracking-wide text-muted-foreground md:text-sm">
-              Kekayaan kamu
+              {t.asset.subtitle}
             </p>
-            <h1 className="text-xl font-bold tracking-tight md:text-2xl">Aset</h1>
+            <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t.asset.title}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <Button
@@ -130,7 +161,7 @@ export function AssetScreen() {
               size="icon"
               aria-label="Total statistik"
               data-testid="asset-stats-button"
-              onClick={() => router.push('/aset/statistik')}
+              onClick={() => router.push('/accounts/stats')}
             >
               <BarChart3 className="size-4.5" />
             </Button>
@@ -141,7 +172,7 @@ export function AssetScreen() {
               data-testid="asset-edit-button"
               onClick={() => setMenuOpen(true)}
             >
-              <Pencil className="size-4.5" />
+              <MoreVertical className="size-4.5" />
             </Button>
           </div>
         </div>
@@ -155,17 +186,17 @@ export function AssetScreen() {
           data-testid="asset-summary"
         >
           <SummaryItem
-            label="Aset"
+            label={t.asset.assets}
             value={formatCurrency(summary.assets, mainCurrency)}
             testId="asset-summary-assets"
           />
           <SummaryItem
-            label="Liabilitas"
+            label={t.asset.liabilities}
             value={formatCurrency(summary.liabilities, mainCurrency)}
             testId="asset-summary-liabilities"
           />
           <SummaryItem
-            label="Total"
+            label={t.asset.total}
             value={formatCurrency(summary.total, mainCurrency)}
             testId="asset-summary-total"
             emphasis
@@ -179,9 +210,9 @@ export function AssetScreen() {
             <div className="mb-3 flex size-16 items-center justify-center rounded-full bg-secondary/40">
               <Wallet className="size-7 text-primary" />
             </div>
-            <h2 className="text-base font-semibold">Belum ada aset</h2>
+            <h2 className="text-base font-semibold">{t.asset.emptyAccounts}</h2>
             <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              Tambahkan rekening, dompet, atau kartu lewat menu di kanan atas.
+              {t.asset.emptyAccountsHint}
             </p>
           </div>
         ) : (
@@ -199,7 +230,9 @@ export function AssetScreen() {
                 <section key={group.uid} data-testid={`asset-group-${group.ACC_GROUP_NAME}`}>
                   <div className="mb-1 flex items-baseline justify-between gap-2 px-1">
                     <h2 className="text-sm font-semibold tracking-wide">
-                      {group.ACC_GROUP_NAME}
+                      {language === 'en'
+                        ? (GROUP_NAMES_ID_TO_EN[group.ACC_GROUP_NAME] ?? group.ACC_GROUP_NAME)
+                        : (GROUP_NAMES_EN_TO_ID[group.ACC_GROUP_NAME] ?? group.ACC_GROUP_NAME)}
                     </h2>
                     <span
                       className="text-xs font-medium text-muted-foreground tabular-nums"
@@ -213,13 +246,13 @@ export function AssetScreen() {
                     {cycles && (
                       <>
                         <CardCycleRow
-                          label="Harus dibayar"
+                          label={t.asset.mustPay}
                           cycle={cycles.payable}
                           currency={currencyFor(cardAsset!)}
                           testId={`card-payable-${group.ACC_GROUP_NAME}`}
                         />
                         <CardCycleRow
-                          label="Belum dibayar"
+                          label={t.asset.willPay}
                           cycle={cycles.upcoming}
                           currency={currencyFor(cardAsset!)}
                           testId={`card-upcoming-${group.ACC_GROUP_NAME}`}
@@ -271,16 +304,16 @@ export function AssetScreen() {
         label="Menu aset"
         testId="asset-menu"
       >
-        <div className="mx-auto w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-xl">
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-0">
           <MenuItem
             icon={<Plus className="size-4" />}
-            label="Tambah"
+            label={t.asset.menuAdd}
             testId="asset-menu-add"
             onClick={openAdd}
           />
           <MenuItem
             icon={<Eye className="size-4" />}
-            label="Tampilkan / Sembunyikan"
+            label={t.asset.menuVisibility}
             testId="asset-menu-visibility"
             onClick={() => {
               setMenuOpen(false)
@@ -289,7 +322,7 @@ export function AssetScreen() {
           />
           <MenuItem
             icon={<Trash2 className="size-4" />}
-            label="Hapus"
+            label={t.asset.menuDelete}
             testId="asset-menu-delete"
             onClick={() => {
               setMenuOpen(false)
@@ -298,7 +331,7 @@ export function AssetScreen() {
           />
           <MenuItem
             icon={<ArrowUpDown className="size-4" />}
-            label="Ubah urutan"
+            label={t.asset.menuReorder}
             testId="asset-menu-reorder"
             onClick={() => {
               setMenuOpen(false)
@@ -312,6 +345,7 @@ export function AssetScreen() {
         <AssetForm
           open
           asset={editing}
+          initialBalance={editing ? (balances.get(editing.uid) ?? editing.BALANCE) : 0}
           groups={groups}
           initialGroupUid={formGroupUid}
           onClose={() => setFormOpen(false)}
@@ -333,6 +367,10 @@ export function AssetScreen() {
         open={detailAsset !== null}
         asset={detailAsset}
         onClose={() => setDetailAsset(null)}
+        onEdit={(asset) => {
+          setDetailAsset(null)
+          openEdit(asset)
+        }}
       />
 
       <AssetVisibilityScreen

@@ -1,8 +1,2 @@
-import type { Metadata } from 'next'
-import { AssetScreen } from '@/components/asset-screen'
-
-export const metadata: Metadata = { title: 'Aset — Dompetku' }
-
-export default function AsetPage() {
-  return <AssetScreen />
-}
+import { redirect } from 'next/navigation'
+export default function Page() { redirect('/accounts') }

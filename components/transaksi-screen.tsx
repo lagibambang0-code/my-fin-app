@@ -5,8 +5,6 @@ import { Filter, Plus, Search, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MonthNavigator, shiftMonth, type MonthValue } from '@/components/month-navigator'
 import { BookmarkScreen } from '@/components/bookmark-screen'
-import { MemoForm } from '@/components/memo-form'
-import { MemoList } from '@/components/memo-list'
 import { TransactionCalendar } from '@/components/transaction-calendar'
 import { TransactionCloseBook } from '@/components/transaction-closebook'
 import { TransactionFilterSheet } from '@/components/transaction-filter-sheet'
@@ -14,19 +12,18 @@ import { TransactionForm, type TransactionDraft } from '@/components/transaction
 import { DailyTransactionList, type Lookups } from '@/components/transaction-list'
 import { TransactionMonthly } from '@/components/transaction-monthly'
 import { TransactionSearchScreen } from '@/components/transaction-search-screen'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
   type Asset,
   type Category,
   type Currency,
-  type Memo,
   type Transaction,
   getAllAssets,
   getAllCategories,
   getAllTransactions,
   getAssetGroups,
   getMainCurrency,
-  getMemos,
   getSettingByKey,
   initDB,
   setTransactionBookmark,
@@ -34,7 +31,6 @@ import {
 } from '@/lib/db'
 import { isCardGroup } from '@/lib/asset-utils'
 import { fromIso, formatCurrency, monthBounds, toIso } from '@/lib/format'
-import { memosInMonth } from '@/lib/memo-utils'
 import {
   EMPTY_FILTER,
   applyFilter,
@@ -43,19 +39,14 @@ import {
   type TransactionFilter,
 } from '@/lib/transaction-utils'
 
-type ViewId = 'daily' | 'calendar' | 'monthly' | 'closebook' | 'memo'
+type ViewId = 'daily' | 'calendar' | 'monthly' | 'closebook'
 
-const VIEWS: { id: ViewId; label: string }[] = [
-  { id: 'daily', label: 'Harian' },
-  { id: 'calendar', label: 'Kalender' },
-  { id: 'monthly', label: 'Bulanan' },
-  { id: 'closebook', label: 'Tutup buku' },
-  { id: 'memo', label: 'Memo' },
-]
+type ViewItem = { id: ViewId; label: string }
 
 const SWIPE_THRESHOLD = 50
 
 export function TransaksiScreen() {
+  const { t } = useTranslation()
   const [today] = useState<MonthValue>(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -63,8 +54,14 @@ export function TransaksiScreen() {
   const [period, setPeriod] = useState<MonthValue>(today)
   const [view, setView] = useState<ViewId>('daily')
 
+  const views: ViewItem[] = [
+    { id: 'daily', label: t.transaction.daily },
+    { id: 'calendar', label: t.transaction.calendar },
+    { id: 'monthly', label: t.transaction.monthly },
+    { id: 'closebook', label: t.transaction.summary },
+  ]
+
   const [all, setAll] = useState<Transaction[]>([])
-  const [memos, setMemos] = useState<Memo[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [currency, setCurrency] = useState<Currency | null>(null)
@@ -83,25 +80,21 @@ export function TransaksiScreen() {
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [copyDraft, setCopyDraft] = useState<TransactionDraft | null>(null)
 
-  const [memoFormOpen, setMemoFormOpen] = useState(false)
-  const [editingMemo, setEditingMemo] = useState<Memo | null>(null)
-
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
+
 
   const load = useCallback(async () => {
     try {
       await initDB()
-      const [transactions, assetList, categoryList, main, groups, memoList, swipeSetting] = await Promise.all([
+      const [transactions, assetList, categoryList, main, groups, swipeSetting] = await Promise.all([
         getAllTransactions(),
         getAllAssets(),
         getAllCategories(),
         getMainCurrency(),
         getAssetGroups(),
-        getMemos(),
         getSettingByKey('swipe_gesture'),
       ])
       setAll(transactions)
-      setMemos(memoList)
       setAssets(assetList)
       setCategories(categoryList)
       setCurrency(main ?? null)
@@ -158,10 +151,6 @@ export function TransaksiScreen() {
   const summary = useMemo(() => summarize(periodRows), [periodRows])
   const filteredRows = useMemo(() => applyFilter(periodRows, filter), [periodRows, filter])
   const bookmarks = useMemo(() => all.filter((tx) => tx.MARK === 1), [all])
-  const periodMemos = useMemo(
-    () => memosInMonth(memos, period.year, period.month),
-    [memos, period],
-  )
   const filterActive = isFilterActive(filter)
 
   const openAdd = () => {
@@ -201,31 +190,6 @@ export function TransaksiScreen() {
       if (row?.id) await setTransactionBookmark(row.id, false)
     }
     await load()
-  }
-
-  const openMemoAdd = () => {
-    setEditingMemo(null)
-    setMemoFormOpen(true)
-  }
-
-  const openMemoEdit = (memo: Memo) => {
-    setEditingMemo(memo)
-    setMemoFormOpen(true)
-  }
-
-  const handleMemoChanged = () => {
-    void load()
-  }
-
-  const handleMemoSaved = async (memoDate: string) => {
-    setMemoFormOpen(false)
-    setEditingMemo(null)
-    await load()
-    // Follow the saved memo when its date sits outside the month in view.
-    const saved = fromIso(memoDate)
-    if (saved.getFullYear() !== period.year || saved.getMonth() !== period.month) {
-      setPeriod({ year: saved.getFullYear(), month: saved.getMonth() })
-    }
   }
 
   const handleSwipeDown = (event: React.PointerEvent<HTMLElement>) => {
@@ -303,7 +267,7 @@ export function TransaksiScreen() {
           aria-label="Tampilan transaksi"
           className="-mx-1 mt-3 flex gap-0.5 overflow-x-auto px-1 pb-1 sm:gap-1"
         >
-          {VIEWS.map((item) => (
+          {views.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -328,19 +292,19 @@ export function TransaksiScreen() {
           data-testid="trx-summary"
         >
           <SummaryCell
-            label="Pendapatan"
+            label={t.transaction.income}
             value={summary.income}
             currency={currency}
             testId="trx-summary-income"
           />
           <SummaryCell
-            label="Pengeluaran"
+            label={t.transaction.expense}
             value={summary.expense}
             currency={currency}
             testId="trx-summary-expense"
           />
           <SummaryCell
-            label="Total"
+            label={t.transaction.total}
             value={summary.total}
             currency={currency}
             testId="trx-summary-total"
@@ -392,7 +356,7 @@ export function TransaksiScreen() {
           />
         ) : view === 'monthly' ? (
           <TransactionMonthly year={period.year} transactions={yearRows} lookups={lookups} />
-        ) : view === 'closebook' ? (
+        ) : (
           <TransactionCloseBook
             year={period.year}
             month={period.month}
@@ -401,37 +365,22 @@ export function TransaksiScreen() {
             lookups={lookups}
             cardAssetUids={cardAssetUids}
           />
-        ) : (
-          <MemoList memos={periodMemos} onOpen={openMemoEdit} onChanged={handleMemoChanged} />
         )}
       </section>
 
       {/* FAB — parked just above the bottom navigation */}
       <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--nav-offset)+0.75rem)] z-30 mx-auto w-full max-w-md px-4 md:max-w-3xl lg:max-w-5xl md:px-10">
         <div className="flex justify-end">
-          {view === 'memo' ? (
-            <Button
-              type="button"
-              size="icon-lg"
-              aria-label="Tambah memo"
-              data-testid="memo-fab"
-              onClick={openMemoAdd}
-              className="pointer-events-auto size-14 rounded-full shadow-lg transition-transform duration-200 ease-out-quart hover:scale-[1.03] active:scale-95 [&_svg:not([class*='size-'])]:size-6"
-            >
-              <Plus aria-hidden="true" />
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              size="icon-lg"
-              aria-label="Tambah transaksi"
-              data-testid="trx-fab"
-              onClick={openAdd}
-              className="pointer-events-auto size-14 rounded-full shadow-lg transition-transform duration-200 ease-out-quart hover:scale-[1.03] active:scale-95 [&_svg:not([class*='size-'])]:size-6"
-            >
-              <Plus aria-hidden="true" />
-            </Button>
-          )}
+          <Button
+            type="button"
+            size="icon-lg"
+            aria-label="Tambah transaksi"
+            data-testid="trx-fab"
+            onClick={openAdd}
+            className="pointer-events-auto size-14 rounded-full shadow-lg transition-transform duration-200 ease-out-quart hover:scale-[1.03] active:scale-95 [&_svg:not([class*='size-'])]:size-6"
+          >
+            <Plus aria-hidden="true" />
+          </Button>
         </div>
       </div>
 
@@ -457,24 +406,6 @@ export function TransaksiScreen() {
           }}
         />
       )}
-
-      {memoFormOpen && (
-        <MemoForm
-          open
-          memo={editingMemo}
-          onClose={() => {
-            setMemoFormOpen(false)
-            setEditingMemo(null)
-          }}
-          onSaved={handleMemoSaved}
-          onDeleted={() => {
-            setMemoFormOpen(false)
-            setEditingMemo(null)
-            handleMemoChanged()
-          }}
-        />
-      )}
-
       <BookmarkScreen
         open={bookmarkOpen}
         transactions={bookmarks}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
   type Asset,
@@ -26,6 +27,7 @@ type DeletedScreenProps = {
 /** Recovery lists for soft-deleted groups and assets (PRD-08 §3.2.8 / §3.2.12). */
 export function DeletedAssetsScreen({ mode }: DeletedScreenProps) {
   const router = useRouter()
+  const { t } = useTranslation()
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -96,10 +98,10 @@ export function DeletedAssetsScreen({ mode }: DeletedScreenProps) {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Kelola aset
+              {t.settings.manageAsset}
             </p>
             <h1 className="truncate text-lg font-bold tracking-tight">
-              {mode === 'groups' ? 'Grup aset yang dihapus' : 'Aset yang dihapus'}
+              {mode === 'groups' ? t.asset.deletedGroups : t.asset.deletedAccounts}
             </h1>
           </div>
         </div>
@@ -111,7 +113,7 @@ export function DeletedAssetsScreen({ mode }: DeletedScreenProps) {
             className="py-16 text-center text-sm text-muted-foreground"
             data-testid="deleted-empty"
           >
-            Tidak ada data
+            {t.common.noData}
           </p>
         ) : (
           <div className="space-y-1" data-testid={`deleted-list-${mode}`}>
@@ -154,7 +156,7 @@ export function DeletedAssetsScreen({ mode }: DeletedScreenProps) {
                     onClick={() => setPendingRestore(row)}
                   >
                     <RotateCcw className="size-3.5" />
-                    Memulihkan
+                    {t.common.restore}
                   </Button>
 
                   {isSelected && (
@@ -177,10 +179,10 @@ export function DeletedAssetsScreen({ mode }: DeletedScreenProps) {
 
       <ConfirmDialog
         open={pendingRestore !== null}
-        title="Pulihkan data?"
-        description="Apakah anda ingin memulihkannya?"
-        confirmLabel="Ya"
-        cancelLabel="Tidak"
+        title={t.asset.restoreData}
+        description={t.asset.restoreDataDesc}
+        confirmLabel={t.common.yes}
+        cancelLabel={t.common.no}
         destructive={false}
         onConfirm={confirmRestore}
         onCancel={() => setPendingRestore(null)}

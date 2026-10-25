@@ -7,9 +7,11 @@ import {
   ArrowUp,
   Check,
   ChevronLeft,
+  ChevronRight,
   CornerUpRight,
   Pencil,
   Plus,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -18,6 +20,7 @@ import {
   type Category,
   createCategory,
   deleteCategory,
+  getMainCategoriesByType,
   getMaxOrderSeq,
   getSubCategoriesByParent,
   promoteSubToMain,
@@ -47,23 +50,38 @@ export function SubCategoryManager({
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmPromote, setConfirmPromote] = useState(false)
+  /** Kategori utama sejenis, dipakai oleh pemilih kategori induk. */
+  const [mainCategories, setMainCategories] = useState<Category[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
+  /** Induk yang dipilih di pemilih; `null` berarti induk saat ini. */
+  const [targetParentUid, setTargetParentUid] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const list = await getSubCategoriesByParent(parent.uid)
+    const [list, mains] = await Promise.all([
+      getSubCategoriesByParent(parent.uid),
+      getMainCategoriesByType(parentType),
+    ])
     setSubs(list)
+    setMainCategories(mains)
     setLoading(false)
-  }, [parent.uid])
+  }, [parent.uid, parentType])
 
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const activeParentUid = targetParentUid ?? parent.uid
+  const activeParentName =
+    mainCategories.find((m) => m.uid === activeParentUid)?.NAME ?? parent.NAME
 
   const openAdd = () => {
     setFormMode('add')
     setEditingId(null)
     setName('')
     setError(null)
+    setTargetParentUid(null)
+    setPickerOpen(false)
   }
 
   const openEdit = (sub: Category) => {
@@ -71,6 +89,8 @@ export function SubCategoryManager({
     setEditingId(sub.id!)
     setName(sub.NAME)
     setError(null)
+    setTargetParentUid(null)
+    setPickerOpen(false)
   }
 
   const closeForm = () => {
@@ -78,6 +98,8 @@ export function SubCategoryManager({
     setEditingId(null)
     setName('')
     setError(null)
+    setTargetParentUid(null)
+    setPickerOpen(false)
   }
 
   const handleSave = async () => {
@@ -86,17 +108,19 @@ export function SubCategoryManager({
       setError('Nama sub kategori tidak boleh kosong')
       return
     }
-    const duplicate = subs.some(
-      (s) => s.id !== editingId && s.NAME.toLowerCase() === trimmed.toLowerCase(),
-    )
-    if (duplicate) {
-      setError('Nama sub kategori sudah digunakan')
-      return
-    }
 
     try {
+      const siblings = await getSubCategoriesByParent(activeParentUid)
+      const duplicate = siblings.some(
+        (s) => s.id !== editingId && s.NAME.toLowerCase() === trimmed.toLowerCase(),
+      )
+      if (duplicate) {
+        setError('Nama sub kategori sudah digunakan')
+        return
+      }
+
       if (formMode === 'add') {
-        const maxOrder = await getMaxOrderSeq(2, 2, parent.uid)
+        const maxOrder = await getMaxOrderSeq(2, 2, activeParentUid)
         await createCategory({
           uid: `sub_${Date.now()}`,
           C_IS_DEL: 0,
@@ -105,14 +129,20 @@ export function SubCategoryManager({
           ORDERSEQ: maxOrder + 1,
           TYPE: 2,
           STATUS: 2,
-          pUid: parent.uid,
+          pUid: activeParentUid,
           IS_DEFAULT: 0,
           isSynced: 0,
           syncTime: 0,
           syncVersion: 1,
         })
       } else if (editingId !== null) {
-        await updateCategory(editingId, { NAME: trimmed, C_UTIME: Date.now() })
+        const patch: Partial<Category> = { NAME: trimmed, C_UTIME: Date.now() }
+        if (activeParentUid !== parent.uid) {
+          // Pindah induk: sub masuk di akhir daftar kategori tujuan.
+          patch.pUid = activeParentUid
+          patch.ORDERSEQ = (await getMaxOrderSeq(2, 2, activeParentUid)) + 1
+        }
+        await updateCategory(editingId, patch)
       }
       closeForm()
       await loadData()
@@ -141,14 +171,63 @@ export function SubCategoryManager({
     onChanged()
   }
 
+  /**
+   * Mode ubah: sub yang sudah ada naik pangkat jadi kategori utama.
+   * Mode tambah: kategori utama baru dibuat dari nama yang sudah diketik
+   * (mengikuti tombol "Kategori utama" pada layar tambah aplikasi asli).
+   */
   const handlePromote = async () => {
-    if (editingId !== null) {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setConfirmPromote(false)
+      setError('Nama kategori tidak boleh kosong')
+      return
+    }
+
+    if (formMode === 'add') {
+      try {
+        const mains = await getMainCategoriesByType(parentType)
+        if (mains.some((m) => m.NAME.toLowerCase() === trimmed.toLowerCase())) {
+          setConfirmPromote(false)
+          setError('Nama kategori sudah digunakan')
+          return
+        }
+        const maxOrder = await getMaxOrderSeq(parentType, 0)
+        await createCategory({
+          uid: `cat_${Date.now()}`,
+          C_IS_DEL: 0,
+          C_UTIME: Date.now(),
+          NAME: trimmed,
+          ORDERSEQ: maxOrder + 1,
+          TYPE: parentType,
+          STATUS: 0,
+          pUid: null,
+          IS_DEFAULT: 0,
+          isSynced: 0,
+          syncTime: 0,
+          syncVersion: 1,
+        })
+      } catch {
+        setConfirmPromote(false)
+        setError('Gagal menyimpan kategori. Coba lagi.')
+        return
+      }
+    } else if (editingId !== null) {
       await promoteSubToMain(editingId, parentType)
     }
+
     setConfirmPromote(false)
     closeForm()
     await loadData()
     onChanged()
+  }
+
+  const requestPromote = () => {
+    if (!name.trim()) {
+      setError('Nama kategori tidak boleh kosong')
+      return
+    }
+    setConfirmPromote(true)
   }
 
   const move = async (index: number, direction: -1 | 1) => {
@@ -276,28 +355,26 @@ export function SubCategoryManager({
       </div>
 
       {formMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px] transition-all animate-in fade-in duration-150">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="sub-form-title"
-            className="w-full max-w-md rounded-2xl border bg-card p-5 shadow-xl"
+            className="relative w-full max-w-md rounded-2xl border bg-card p-5 shadow-xl"
           >
             <div className="mb-4 flex items-center justify-between gap-2">
               <h2 id="sub-form-title" className="text-lg font-bold">
                 {formMode === 'add' ? 'Sub kategori' : 'Edit sub kategori'}
               </h2>
-              {formMode === 'edit' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label="Jadikan kategori utama"
-                  onClick={() => setConfirmPromote(true)}
-                >
-                  <CornerUpRight className="size-3.5" />
-                  Kategori utama
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Jadikan kategori utama"
+                onClick={requestPromote}
+              >
+                <CornerUpRight className="size-3.5" />
+                Kategori utama
+              </Button>
             </div>
             <form
               onSubmit={(e) => {
@@ -307,16 +384,19 @@ export function SubCategoryManager({
               className="space-y-3"
             >
               <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                <span className="mb-1 block text-xs font-medium text-muted-foreground">
                   Kategori
-                </label>
-                <input
-                  type="text"
-                  value={parent.NAME}
-                  readOnly
+                </span>
+                <button
+                  type="button"
                   aria-label="Kategori induk"
-                  className="w-full rounded-lg border border-input bg-muted px-3 py-2.5 text-sm text-muted-foreground"
-                />
+                  aria-haspopup="dialog"
+                  onClick={() => setPickerOpen(true)}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 py-2.5 text-left text-sm hover:bg-secondary"
+                >
+                  <span className="truncate">{activeParentName}</span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </button>
               </div>
               <div>
                 <label
@@ -357,6 +437,60 @@ export function SubCategoryManager({
                 </Button>
               </div>
             </form>
+
+            {pickerOpen && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/40 p-4 backdrop-blur-[2px] transition-all animate-in fade-in duration-150">
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="sub-parent-picker-title"
+                  className="w-full max-w-sm rounded-2xl border bg-card p-4 shadow-xl"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h3 id="sub-parent-picker-title" className="text-base font-bold">
+                      Kategori
+                    </h3>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Tutup daftar kategori"
+                      onClick={() => setPickerOpen(false)}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                  <div
+                    className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto"
+                    data-testid="sub-parent-picker"
+                  >
+                    {mainCategories.map((option) => {
+                      const current = activeParentUid === option.uid
+                      return (
+                        <button
+                          key={option.uid}
+                          type="button"
+                          aria-label={`Pilih kategori ${option.NAME}`}
+                          aria-pressed={current}
+                          onClick={() => {
+                            setTargetParentUid(option.uid === parent.uid ? null : option.uid)
+                            setPickerOpen(false)
+                          }}
+                          className={cn(
+                            'flex items-center justify-between gap-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                            current
+                              ? 'border-primary bg-accent text-accent-foreground'
+                              : 'bg-card hover:bg-secondary',
+                          )}
+                        >
+                          <span className="truncate">{option.NAME}</span>
+                          {current && <Check className="size-4 shrink-0 text-primary" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

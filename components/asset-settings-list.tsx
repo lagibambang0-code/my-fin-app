@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, MoreVertical, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { Overlay } from '@/components/ui/overlay'
 import { AssetForm } from '@/components/asset-form'
 import { AssetReorderScreen } from '@/components/asset-reorder-screen'
@@ -23,6 +24,7 @@ import { formatCurrency } from '@/lib/format'
 /** "Pengaturan aset" — assets grouped per group, tap to edit (PRD-08 §3.2.7). */
 export function AssetSettingsList() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [mainCurrency, setMainCurrency] = useState<Currency | null>(null)
@@ -89,10 +91,19 @@ export function AssetSettingsList() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Kelola aset
+              {t.settings.manageAsset}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">Pengaturan aset</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.asset.settingsTitle}</h1>
           </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t.asset.addAccount}
+            data-testid="asset-settings-add"
+            onClick={() => openAdd()}
+          >
+            <Plus className="size-5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -100,10 +111,7 @@ export function AssetSettingsList() {
             data-testid="asset-settings-menu"
             onClick={() => setMenuOpen(true)}
           >
-            <MoreVertical className="size-4" />
-          </Button>
-          <Button aria-label="Tambah aset" data-testid="asset-settings-add" onClick={() => openAdd()}>
-            <Plus className="size-4" />
+            <MoreVertical className="size-5" />
           </Button>
         </div>
       </header>
@@ -111,7 +119,7 @@ export function AssetSettingsList() {
       <div className="flex flex-1 flex-col px-4 md:px-10">
         {groupsWithAssets.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground" data-testid="asset-settings-empty">
-            Tidak ada data
+            {t.common.noData}
           </p>
         ) : (
           groupsWithAssets.map((group) => (
@@ -153,7 +161,7 @@ export function AssetSettingsList() {
         label="Menu pengaturan aset"
         testId="asset-settings-menu-sheet"
       >
-        <div className="mx-auto w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-xl">
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-0">
           <button
             type="button"
             data-testid="asset-settings-menu-add"
@@ -161,7 +169,7 @@ export function AssetSettingsList() {
             className="flex w-full items-center gap-3 border-b px-4 py-3.5 text-left text-sm hover:bg-secondary"
           >
             <Plus className="size-4" />
-            Tambah aset
+            {t.asset.addAccount}
           </button>
           <button
             type="button"
@@ -173,7 +181,7 @@ export function AssetSettingsList() {
             className="flex w-full items-center gap-3 border-b px-4 py-3.5 text-left text-sm hover:bg-secondary"
           >
             <MoreVertical className="size-4" />
-            Tampilkan / Sembunyikan
+            {t.asset.menuVisibility}
           </button>
           <button
             type="button"
@@ -185,7 +193,7 @@ export function AssetSettingsList() {
             className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm hover:bg-secondary"
           >
             <MoreVertical className="size-4" />
-            Ubah urutan
+            {t.asset.menuReorder}
           </button>
         </div>
       </Overlay>
@@ -194,6 +202,7 @@ export function AssetSettingsList() {
         <AssetForm
           open
           asset={editing}
+          initialBalance={editing ? (balances.get(editing.uid) ?? editing.BALANCE) : 0}
           groups={groups}
           initialGroupUid={formGroupUid}
           onClose={() => setFormOpen(false)}

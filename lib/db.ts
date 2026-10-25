@@ -330,54 +330,6 @@ export type TxTag = {
   syncVersion: number
 }
 
-/** SMS captured from the device (`SMS_RAW_READ` table) — SMS auto-catat. */
-export type SmsMessage = {
-  id?: number
-  uid: string
-  /** Read timestamp (`YYYY-MM-DD HH:MM:SS`). */
-  RDATE: string
-  /** Epoch millis of the SMS date. */
-  ZDATE: number
-  TEL: string
-  /** The raw SMS body. */
-  ZDATA: string
-  MACROTYPE: number
-  assetUid: string | null
-  toAssetUid: string | null
-  NOTIFY_TYPE: number
-  AMOUNT: string
-  TEXT_PARSING_TIME: number
-  ASSETNAME: string
-  TYPE: string
-  MMSID: number
-  APP_PACKAGE: string
-  APP_NAME: string
-  SENDER_NAME: string
-  IS_DEL: number
-  utime: number
-  isSynced: number
-  syncTime: number
-  syncVersion: number
-}
-
-/** Sender → asset mapping used when a SMS is parsed (`MESSAGEMACRO2` table). */
-export type SmsMacro = {
-  id?: number
-  uid: string
-  conAssetUid: string | null
-  MACROASSETNAME: string
-  MACROTYPE: number
-  SMS_TEL: string
-  MODIDATE: string
-  USEYN: string
-  APP_PACKAGE: string
-  APP_NAME: string
-  ORDERSEQ: number
-  utime: number
-  isSynced: number
-  syncTime: number
-  syncVersion: number
-}
 
 export class DompetkuDB extends Dexie {
   currencies!: Table<Currency, number>
@@ -393,8 +345,6 @@ export class DompetkuDB extends Dexie {
   memos!: Table<Memo, number>
   tags!: Table<Tag, number>
   txTags!: Table<TxTag, number>
-  smsMessages!: Table<SmsMessage, number>
-  smsMacros!: Table<SmsMacro, number>
 
 
   constructor() {
@@ -547,8 +497,6 @@ export class DompetkuDB extends Dexie {
       memos: 'id++, uid, isDel, pinned, memoDate',
       tags: 'id++, uid, isDel, orderSeq',
       txTags: 'id++, uid, txUid, tagUid, isDel',
-      smsMessages: 'id++, uid, ZDATE, TEL, IS_DEL',
-      smsMacros: 'id++, uid, SMS_TEL, isDel',
     })
   }
 }
@@ -566,42 +514,42 @@ export function genUid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 11)}`
 }
 
-/** Default currencies (IDR as main, per user choice). */
+/** Default currencies (USD as main, per user preference). */
 export const SEED_CURRENCIES: Omit<Currency, 'id'>[] = [
-  {
-    uid: 'IDR_IDR',
-    NAME: 'IDR - Indonesia (Rp)',
-    ISO: 'IDR',
-    MAIN_ISO: 'IDR',
-    IS_DEL: 0,
-    ORDER_SEQ: 1,
-    RATE: 1,
-    SYMBOL: 'Rp',
-    INSERT_TYPE: 'manual',
-    SYMBOL_POSITION: 'front',
-    IS_MAIN_CURRENCY: 1,
-    IS_SHOW: 1,
-    MODIFY_DATE: NOW,
-    DECIMAL_POINT: 0,
-    isSynced: 0,
-    syncTime: 0,
-    syncVersion: 1,
-  },
   {
     uid: 'USD_USD',
     NAME: 'USD - USA (US$)',
     ISO: 'USD',
     MAIN_ISO: 'USD',
     IS_DEL: 0,
+    ORDER_SEQ: 1,
+    RATE: 1,
+    SYMBOL: '$',
+    INSERT_TYPE: 'manual',
+    SYMBOL_POSITION: 'front',
+    IS_MAIN_CURRENCY: 1,
+    IS_SHOW: 1,
+    MODIFY_DATE: NOW,
+    DECIMAL_POINT: 2,
+    isSynced: 0,
+    syncTime: 0,
+    syncVersion: 1,
+  },
+  {
+    uid: 'IDR_IDR',
+    NAME: 'IDR - Indonesia (Rp)',
+    ISO: 'IDR',
+    MAIN_ISO: 'IDR',
+    IS_DEL: 0,
     ORDER_SEQ: 2,
     RATE: 15000,
-    SYMBOL: '$',
+    SYMBOL: 'Rp',
     INSERT_TYPE: 'manual',
     SYMBOL_POSITION: 'front',
     IS_MAIN_CURRENCY: 0,
     IS_SHOW: 1,
     MODIFY_DATE: NOW,
-    DECIMAL_POINT: 2,
+    DECIMAL_POINT: 0,
     isSynced: 0,
     syncTime: 0,
     syncVersion: 1,
@@ -615,7 +563,7 @@ export const SEED_SETTINGS: Omit<Setting, 'id'>[] = [
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'money_color', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'carry_over', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'card_accounting_type', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
-  { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'use_sub_category', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '1', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'use_sub_category', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '1', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'use_auto_complete', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'repeat_reflect_type', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'main_tab_first_view', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
@@ -749,7 +697,7 @@ function seedAssetBase(
     IS_SHOW: 1,
     IS_INCLUDE_TOTAL: 1,
     IS_DEL: 0,
-    currencyUid: 'IDR_IDR',
+    currencyUid: 'USD_USD',
     cardAssetUid: null,
     groupUid,
     IS_DEFAULT: 1,
@@ -760,66 +708,8 @@ function seedAssetBase(
 }
 
 /** Default assets (Cash, Accounts, Card) — all balance 0. */
-/** System tags seeded on a clean install (Skema-Database §5.5: 2 tag sistem). */
-export const SEED_TAGS: Omit<Tag, 'id'>[] = [
-  {
-    uid: 'system_prepayment',
-    name: 'Prepayment',
-    orderSeq: 1,
-    isDel: 0,
-    utime: NOW,
-    isSynced: 0,
-    syncTime: 0,
-    syncVersion: 1,
-  },
-  {
-    uid: 'system_card_usage_exception',
-    name: 'Exception',
-    orderSeq: 2,
-    isDel: 0,
-    utime: NOW,
-    isSynced: 0,
-    syncTime: 0,
-    syncVersion: 1,
-  },
-]
-
-/**
- * Default SMS sender → asset macros (MESSAGEMACRO2). A bank SMS lands on the
- * "Accounts" asset, e-wallet SMS on "Cash" — the user can change the asset on
- * the prefilled form before saving.
- */
-export const SEED_SMS_MACROS: Omit<SmsMacro, 'id'>[] = [
-  { tel: 'BCA', asset: 'ast_accounts' },
-  { tel: 'MANDIRI', asset: 'ast_accounts' },
-  { tel: 'BNI', asset: 'ast_accounts' },
-  { tel: 'BRI', asset: 'ast_accounts' },
-  { tel: 'PERMATA', asset: 'ast_accounts' },
-  { tel: 'CIMB', asset: 'ast_accounts' },
-  { tel: 'JAGO', asset: 'ast_accounts' },
-  { tel: 'SEABANK', asset: 'ast_accounts' },
-  { tel: 'OVO', asset: 'ast_cash' },
-  { tel: 'GOPAY', asset: 'ast_cash' },
-  { tel: 'DANA', asset: 'ast_cash' },
-  { tel: 'SHOPEEPAY', asset: 'ast_cash' },
-  { tel: 'LINKAJA', asset: 'ast_accounts' },
-].map((entry, index) => ({
-  uid: `macro_${entry.tel.toLowerCase()}`,
-  conAssetUid: entry.asset,
-  MACROASSETNAME: entry.asset === 'ast_cash' ? 'Cash' : 'Accounts',
-  MACROTYPE: 0,
-  SMS_TEL: entry.tel,
-  MODIDATE: '',
-  USEYN: 'Y',
-  APP_PACKAGE: '',
-  APP_NAME: '',
-  ORDERSEQ: index + 1,
-  utime: NOW,
-  isDel: 0,
-  isSynced: 0,
-  syncTime: 0,
-  syncVersion: 1,
-}))
+/** Initial tags seeded on install — empty per Money Manager parity (1B). */
+export const SEED_TAGS: Omit<Tag, 'id'>[] = []
 
 export const SEED_ASSETS: Omit<Asset, 'id'>[] = [
   seedAssetBase('ast_cash', 'Cash', 1, 'ag_cash'),
@@ -833,7 +723,7 @@ export const SEED_ASSETS: Omit<Asset, 'id'>[] = [
  * contain data before inserting.
  */
 export async function seedDatabase(): Promise<void> {
-  const [currCount, setCount, catCount, grpCount, astCount, tagCount, macroCount] =
+  const [currCount, setCount, catCount, grpCount, astCount, tagCount] =
     await Promise.all([
       db.currencies.count(),
       db.settings.count(),
@@ -841,7 +731,6 @@ export async function seedDatabase(): Promise<void> {
       db.assetGroups.count(),
       db.assets.count(),
       db.tags.count(),
-      db.smsMacros.count(),
     ])
 
   if (currCount === 0) {
@@ -862,8 +751,15 @@ export async function seedDatabase(): Promise<void> {
   if (tagCount === 0) {
     await db.tags.bulkAdd(SEED_TAGS)
   }
-  if (macroCount === 0) {
-    await db.smsMacros.bulkAdd(SEED_SMS_MACROS)
+
+  // Ensure USD is default main currency
+  const usd = await db.currencies.where('uid').equals('USD_USD').first()
+  if (usd && usd.IS_MAIN_CURRENCY !== 1) {
+    const mainCurSetting = await db.settings.where('dataTypeKey').equals('main_currency').first()
+    if (!mainCurSetting) {
+      await db.currencies.where('uid').equals('IDR_IDR').modify({ IS_MAIN_CURRENCY: 0 })
+      await db.currencies.where('uid').equals('USD_USD').modify({ IS_MAIN_CURRENCY: 1 })
+    }
   }
 }
 
@@ -1609,114 +1505,6 @@ export async function setTransactionTags(txUid: string, tagUids: string[]): Prom
       })
     }
   })
-}
-
-// ---------------------------------------------------------------------------
-// Memo helpers — PRD-11 sub-tab "Memo"
-// ---------------------------------------------------------------------------
-
-/** Pinned first (most recently pinned on top), then newest first. */
-export function sortMemosDesc(list: Memo[]): Memo[] {
-  return [...list].sort((a, b) => {
-    if (a.pinned !== b.pinned) return b.pinned - a.pinned
-    if (a.pinned === 1 && b.pinned === 1 && a.pinnedTime !== b.pinnedTime) {
-      return b.pinnedTime - a.pinnedTime
-    }
-    if (a.memoDate !== b.memoDate) return a.memoDate < b.memoDate ? 1 : -1
-    if (a.memoTime !== b.memoTime) return b.memoTime - a.memoTime
-    return b.orderSeq - a.orderSeq
-  })
-}
-
-/** Active memos, newest first (pinned on top). */
-export async function getMemos(): Promise<Memo[]> {
-  const rows = await db.memos.where('isDel').equals(0).toArray()
-  return sortMemosDesc(rows)
-}
-
-export async function getMemoByUid(uid: string): Promise<Memo | undefined> {
-  const rows = await db.memos.where('uid').equals(uid).toArray()
-  return rows.find((m) => m.isDel === 0)
-}
-
-export async function getMaxMemoOrderSeq(): Promise<number> {
-  const rows = await db.memos.toArray()
-  return rows.reduce((max, m) => Math.max(max, m.orderSeq ?? 0), 0)
-}
-
-export async function createMemo(input: {
-  title: string
-  content: string
-  memoDate: string
-  memoTime: number
-  color: string
-  pinned: boolean
-}): Promise<number> {
-  const orderSeq = (await getMaxMemoOrderSeq()) + 1
-  return db.memos.add({
-    uid: genUid('memo'),
-    title: input.title,
-    content: input.content,
-    memoDate: input.memoDate,
-    memoTime: input.memoTime,
-    pinned: input.pinned ? 1 : 0,
-    pinnedTime: input.pinned ? Date.now() : 0,
-    orderSeq,
-    color: input.color,
-    isDel: 0,
-    utime: Date.now(),
-    isSynced: 0,
-    syncTime: 0,
-    syncVersion: 1,
-  })
-}
-
-/** Patch an existing memo; `pinned` also refreshes `pinnedTime` so it floats. */
-export async function updateMemo(uid: string, patch: Partial<Memo>): Promise<void> {
-  const rows = await db.memos.where('uid').equals(uid).toArray()
-  const row = rows.find((m) => m.isDel === 0)
-  if (!row) return
-  const next: Partial<Memo> = { ...patch, utime: Date.now() }
-  if (patch.pinned !== undefined) {
-    next.pinnedTime = patch.pinned ? (row.pinned ? row.pinnedTime : Date.now()) : 0
-  }
-  await db.memos.update(row.id!, next)
-}
-
-export async function toggleMemoPin(uid: string, pinned: boolean): Promise<void> {
-  await updateMemo(uid, { pinned: pinned ? 1 : 0 })
-}
-
-export async function softDeleteMemos(uids: string[]): Promise<void> {
-  const wanted = new Set(uids)
-  const rows = await db.memos.where('isDel').equals(0).toArray()
-  const targets = rows.filter((m) => wanted.has(m.uid))
-  await Promise.all(targets.map((m) => db.memos.update(m.id!, { isDel: 1, utime: Date.now() })))
-}
-
-// ---------------------------------------------------------------------------
-// SMS helpers — SMS_RAW_READ / MESSAGEMACRO2 (auto-catat)
-// ---------------------------------------------------------------------------
-
-/** Parsed SMS rows, newest first. */
-export async function getSmsMessages(): Promise<SmsMessage[]> {
-  const rows = await db.smsMessages.where('IS_DEL').equals(0).toArray()
-  return rows.sort((a, b) => b.ZDATE - a.ZDATE)
-}
-
-export async function createSmsMessage(entry: Omit<SmsMessage, 'id'>): Promise<number> {
-  return db.smsMessages.add(entry)
-}
-
-export async function softDeleteSmsMessage(uid: string): Promise<void> {
-  const rows = await db.smsMessages.where('uid').equals(uid).toArray()
-  await Promise.all(rows.map((row) => db.smsMessages.update(row.id!, { IS_DEL: 1 })))
-}
-
-/** Sender → asset macros, ordered by `ORDERSEQ`. */
-export async function getSmsMacros(): Promise<SmsMacro[]> {
-  const rows = await db.smsMacros.where('isDel').equals(0).toArray()
-  return rows.sort((a, b) => a.ORDERSEQ - b.ORDERSEQ)
 }
 
 // ---------------------------------------------------------------------------

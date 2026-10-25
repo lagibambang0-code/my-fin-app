@@ -210,8 +210,8 @@ async function main() {
   })
 
   try {
-    console.log('\n▶ Tag: entri di Lainnya & tag bawaan')
-    await test('TC-TAG-01: "Kelola tag" + 2 tag sistem (Prepayment, Exception)', async () => {
+    console.log('\n▶ Tag: entri di Lainnya & daftar tag')
+    await test('TC-TAG-01: "Kelola tag" — layar awal kosong ("Tidak ada data")', async () => {
       await page.goto(`${BASE}/lainnya`, { waitUntil: 'networkidle0' })
       await waitFor(page, '[data-testid="settings-item-tag"]')
       assert(
@@ -221,26 +221,23 @@ async function main() {
       await click(page, '[data-testid="settings-item-tag"]')
       await waitFor(page, '[data-testid="tag-list"]')
       assert(page.url().endsWith('/lainnya/tag'), `wrong url ${page.url()}`)
-      await waitForTagCount(page, 2)
-      const names = await tagNames(page)
-      assert(names.includes('Prepayment'), `Prepayment missing (${names.join(', ')})`)
-      assert(names.includes('Exception'), `Exception missing (${names.join(', ')})`)
+      await waitFor(page, '[data-testid="tag-empty"]')
       assert(
-        await hasText(page, `[data-testid="tag-name-${PREPAYMENT}"]`, 'Prepayment'),
-        'system uid Prepayment wrong',
-      )
-      assert(
-        await exists(page, `[data-testid="tag-row-${EXCEPTION}"]`),
-        'system uid Exception wrong',
+        await hasText(page, '[data-testid="tag-empty"]', 'Tidak ada data'),
+        'empty state wrong',
       )
     })
 
     console.log('\n▶ CRUD & urutan tag')
     await test('TC-TAG-02: tambah tag baru + tolak nama kembar', async () => {
       await gotoTagSettings(page)
+      await setInput(page, '[data-testid="tag-new-input"]', 'Tag Satu')
+      await click(page, '[data-testid="tag-add"]')
+      await waitForTagCount(page, 1)
+
       await setInput(page, '[data-testid="tag-new-input"]', 'Liburan')
       await click(page, '[data-testid="tag-add"]')
-      await waitForTagCount(page, 3)
+      await waitForTagCount(page, 2)
       assert((await tagNames(page)).includes('Liburan'), 'new tag missing')
 
       // Duplicate name (case-insensitive) must be rejected.
@@ -251,7 +248,7 @@ async function main() {
         await hasText(page, '[data-testid="tag-error"]', 'sudah ada'),
         'duplicate warning missing',
       )
-      assert((await countOf(page, '[data-testid^="tag-row-"]')) === 3, 'duplicate must not be added')
+      assert((await countOf(page, '[data-testid^="tag-row-"]')) === 2, 'duplicate must not be added')
       await setInput(page, '[data-testid="tag-new-input"]', '')
     })
 
@@ -323,15 +320,15 @@ async function main() {
       await click(page, '[data-testid="picker-option-ast_cash"]')
       await waitGone(page, '[data-testid="asset-picker"]')
 
-      // Pick "Prepayment" + quick-create "Perjalanan" from inside the sheet.
+      // Pick "Tag Satu" + quick-create "Perjalanan" from inside the sheet.
       await click(page, '[data-testid="trx-tag-button"]')
       await waitFor(page, '[data-testid="trx-tag-picker"]')
-      await click(page, `[data-testid="trx-tag-option-${PREPAYMENT}"]`)
+      await clickContaining(page, 'trx-tag-option-', 'Tag Satu')
       await setInput(page, '[data-testid="trx-tag-input"]', 'Perjalanan')
       await click(page, '[data-testid="trx-tag-add"]')
       await page.waitForFunction(
         () =>
-          [...document.querySelectorAll('[data-testid^="trx-tag-option-"]')].length === 4 &&
+          [...document.querySelectorAll('[data-testid^="trx-tag-option-"]')].length === 3 &&
           [...document.querySelectorAll('[data-testid^="trx-tag-option-"]')].some((el) =>
             el.textContent.includes('Perjalanan'),
           ),
@@ -340,9 +337,8 @@ async function main() {
       await click(page, '[data-testid="trx-tag-done"]')
       await waitGone(page, '[data-testid="trx-tag-picker"]')
       const label = await textOf(page, '[data-testid="trx-tag-value"]')
-      assert(label.includes('Prepayment'), `tag row label wrong: ${label}`)
+      assert(label.includes('Tag Satu'), `tag row label wrong: ${label}`)
       assert(label.includes('Perjalanan'), `quick-created tag missing: ${label}`)
-
       await click(page, '[data-testid="trx-save"]')
       await waitGone(page, '[data-testid="transaction-form"]')
 
@@ -354,15 +350,15 @@ async function main() {
       await click(page, `[data-testid="tx-row-${uid}"]`)
       await waitFor(page, '[data-testid="transaction-form"]')
       const reopened = await textOf(page, '[data-testid="trx-tag-value"]')
-      assert(reopened.includes('Prepayment'), `tag not reloaded: ${reopened}`)
+      assert(reopened.includes('Tag Satu'), `tag not reloaded: ${reopened}`)
       assert(reopened.includes('Perjalanan'), `quick tag not reloaded: ${reopened}`)
       await click(page, '[data-testid="trx-tag-button"]')
       await waitFor(page, '[data-testid="trx-tag-picker"]')
       const pressed = await page.$eval(
-        `[data-testid="trx-tag-option-${PREPAYMENT}"]`,
+        '[data-testid^="trx-tag-option-"]',
         (el) => el.getAttribute('aria-pressed'),
       )
-      assert(pressed === 'true', 'Prepayment should be pressed in the picker')
+      assert(pressed === 'true', 'Tag Satu should be pressed in the picker')
       await click(page, '[data-testid="trx-tag-done"]')
       await click(page, '[data-testid="trx-form-back"]')
       await waitGone(page, '[data-testid="transaction-form"]')
@@ -372,12 +368,15 @@ async function main() {
       await gotoTagSettings(page)
       const rowsBefore = await countOf(page, '[data-testid^="tag-row-"]')
       const rows = await page.$$eval('[data-testid^="tag-row-"]', (els) =>
-        els.map((el) => ({ uid: el.getAttribute('data-testid').replace('tag-row-', '') })),
+        els.map((el) => ({
+          uid: el.getAttribute('data-testid').replace('tag-row-', ''),
+          name: el.querySelector('[data-testid^="tag-name-"]')?.textContent?.trim() || '',
+        })),
       )
-      const target = rows.find((row) => row.uid === PREPAYMENT)
-      assert(target, 'Prepayment row missing')
+      const target = rows.find((row) => row.name.includes('Tag Satu')) || rows[0]
+      assert(target, 'Tag Satu row missing')
 
-      await click(page, `[data-testid="tag-delete-${PREPAYMENT}"]`)
+      await click(page, `[data-testid="tag-delete-${target.uid}"]`)
       await waitFor(page, '[data-testid="confirm-dialog"]')
       await clickLabel(page, '[data-testid="confirm-dialog"]', 'TIDAK')
       await waitGone(page, '[data-testid="confirm-dialog"]')
@@ -386,13 +385,13 @@ async function main() {
         'TIDAK must keep the tag',
       )
 
-      await click(page, `[data-testid="tag-delete-${PREPAYMENT}"]`)
+      await click(page, `[data-testid="tag-delete-${target.uid}"]`)
       await waitFor(page, '[data-testid="confirm-dialog"]')
       await clickLabel(page, '[data-testid="confirm-dialog"]', 'YA')
       await waitGone(page, '[data-testid="confirm-dialog"]')
       await waitForTagCount(page, rowsBefore - 1)
       assert(
-        !(await exists(page, `[data-testid="tag-row-${PREPAYMENT}"]`)),
+        !(await exists(page, `[data-testid="tag-row-${target.uid}"]`)),
         'tag still listed after YA',
       )
 
@@ -405,7 +404,7 @@ async function main() {
       await click(page, `[data-testid="tx-row-${uid}"]`)
       await waitFor(page, '[data-testid="transaction-form"]')
       const label = await textOf(page, '[data-testid="trx-tag-value"]')
-      assert(!label.includes('Prepayment'), `deleted tag still attached: ${label}`)
+      assert(!label.includes('Tag Satu'), `deleted tag still attached: ${label}`)
       assert(label.includes('Perjalanan'), `remaining tag lost: ${label}`)
       await click(page, '[data-testid="trx-form-back"]')
       await waitGone(page, '[data-testid="transaction-form"]')

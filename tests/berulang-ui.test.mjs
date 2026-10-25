@@ -148,6 +148,48 @@ async function setInput(page, selector, value) {
   )
 }
 
+const MONTH_NAMES = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
+
+/** Open the app date-picker sheet and select the given `YYYY-MM-DD` date. */
+async function pickDate(page, iso, trigger = '[data-testid="trx-date-input"]') {
+  await click(page, trigger)
+  await waitFor(page, '[data-testid="date-picker-sheet"]')
+
+  const [targetYear, targetMonth] = iso.split('-').map(Number)
+  await page.select('[data-testid="date-picker-year"]', String(targetYear))
+
+  for (let i = 0; i < 36; i++) {
+    const label = await page.$eval('[data-testid="date-picker-month-label"]', (el) =>
+      el.textContent.trim(),
+    )
+    const [monthName, yearStr] = label.split(' ')
+    const monthIndex = MONTH_NAMES.indexOf(monthName)
+    const year = Number(yearStr)
+    if (year === targetYear && monthIndex === targetMonth - 1) break
+    const goBack = year > targetYear || (year === targetYear && monthIndex > targetMonth - 1)
+    await click(
+      page,
+      goBack ? '[data-testid="date-picker-prev-month"]' : '[data-testid="date-picker-next-month"]',
+    )
+  }
+
+  await click(page, `[data-testid="date-picker-day-${iso}"]`)
+  await waitGone(page, '[data-testid="date-picker-sheet"]')
+}
+
 async function pressKeys(page, keys) {
   for (const key of keys) {
     await click(page, `[data-testid="numpad-${key === '.' ? 'dot' : key}"]`)
@@ -234,7 +276,7 @@ async function addRecurring(page, { frequencyIndex, keys, category, uid, amount 
   await click(page, `[data-testid="repeat-option-${frequencyIndex}"]`)
   await waitFor(page, '[data-testid="transaction-form"]')
   await pressKeys(page, keys)
-  await setInput(page, '[data-testid="trx-date-input"]', SEED_DATE)
+  await pickDate(page, SEED_DATE)
   await pickCategory(page, category)
   await pickAsset(page, uid)
   await click(page, '[data-testid="trx-save"]')
@@ -407,7 +449,7 @@ async function main() {
         'form should show the picked frequency',
       )
       await pressKeys(page, ['1', '0', '0', '0', '0', '0'])
-      await setInput(page, '[data-testid="trx-date-input"]', SEED_DATE)
+      await pickDate(page, SEED_DATE)
       await pickCategory(page, '🍜 Food')
       await pickAsset(page, 'ast_cash')
       await click(page, '[data-testid="trx-save"]')

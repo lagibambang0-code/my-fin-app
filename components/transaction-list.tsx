@@ -2,6 +2,7 @@
 
 import { ArrowLeftRight, ReceiptText, Star, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import type { Asset, Category, Currency, Transaction } from '@/lib/db'
 import { formatCurrency, formatMonthDotYear, formatShortDate, fromIso, WEEKDAYS_SHORT } from '@/lib/format'
@@ -114,6 +115,9 @@ export function TransactionsEmpty({
   hint?: string
   testId?: string
 }) {
+  const { t } = useTranslation()
+  const displayHint = hint ?? t.transaction.emptyHint
+
   return (
     <div
       data-testid={testId}
@@ -122,8 +126,8 @@ export function TransactionsEmpty({
       <span className="mb-3 flex size-14 items-center justify-center rounded-full bg-secondary/50 text-primary">
         <ReceiptText aria-hidden="true" className="size-6" />
       </span>
-      <h2 className="text-sm font-semibold">Tidak ada data</h2>
-      {hint && <p className="mt-1 max-w-xs text-xs text-muted-foreground">{hint}</p>}
+      <h2 className="text-sm font-semibold">{t.common.noData}</h2>
+      {displayHint && <p className="mt-1 max-w-xs text-xs text-muted-foreground">{displayHint}</p>}
     </div>
   )
 }
@@ -146,9 +150,7 @@ export function DailyTransactionList({
     return (
       <div className="space-y-3">
         {filterActive && onClearFilter && <FilterChip onClear={onClearFilter} />}
-        <TransactionsEmpty
-          hint="Tekan tombol + untuk mencatat transaksi baru pada periode ini."
-        />
+        <TransactionsEmpty />
       </div>
     )
   }

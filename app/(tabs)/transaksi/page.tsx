@@ -1,8 +1,2 @@
-import type { Metadata } from 'next'
-import { TransaksiScreen } from '@/components/transaksi-screen'
-
-export const metadata: Metadata = { title: 'Transaksi — Dompetku' }
-
-export default function TransaksiPage() {
-  return <TransaksiScreen />
-}
+import { redirect } from 'next/navigation'
+export default function Page() { redirect('/transactions') }

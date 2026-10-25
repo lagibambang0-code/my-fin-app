@@ -46,11 +46,16 @@ export function budgetMonthCustomized(
 }
 
 /** Display name of a budget: the category name, or "Total anggaran" (BR-03). */
-export function budgetName(budget: Budget, categories: Map<string, Category>): string {
-  if (budget.IS_TOTAL === 1) return 'Total anggaran'
-  return categories.get(budget.targetUid)?.NAME ?? 'Tanpa kategori'
+export function budgetName(budget: Budget, categories: Map<string, Category>, totalLabel?: string): string {
+  if (budget.IS_TOTAL === 1) return totalLabel ?? 'Total anggaran'
+  const cat = categories.get(budget.targetUid)
+  if (!cat) return 'Tanpa kategori'
+  if (cat.STATUS === 2 && cat.pUid) {
+    const parent = categories.get(cat.pUid)
+    return parent ? `${parent.NAME} › ${cat.NAME}` : cat.NAME
+  }
+  return cat.NAME
 }
-
 /**
  * Expense total per **main** category for a set of transactions. Sub-categories
  * roll up into their parent so the report matches the Statistik tab (E-04).

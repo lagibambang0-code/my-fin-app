@@ -10,7 +10,8 @@ import type { Budget, Category, Currency } from '@/lib/db'
 import { setBudgetMonthAmount, updateBudgetBase } from '@/lib/db'
 import { budgetAmountFor, budgetMonthCustomized, budgetName } from '@/lib/budget-utils'
 import { formatCurrency } from '@/lib/format'
-import { MONTHS } from '@/lib/month'
+import { getLocalizedMonths, MONTHS } from '@/lib/month'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 
 type BudgetMonthlySheetProps = {
@@ -44,6 +45,8 @@ export function BudgetMonthlySheet({
   onDelete,
   onChanged,
 }: BudgetMonthlySheetProps) {
+  const { t, language } = useTranslation()
+  const localizedMonths = getLocalizedMonths(language)
   const [year, setYear] = useState(initialYear)
   const [pad, setPad] = useState<
     { kind: 'base' } | { kind: 'month'; month: number } | null
@@ -85,8 +88,8 @@ export function BudgetMonthlySheet({
 
   return (
     <>
-      <FullScreenSheet open={open} testId="budget-monthly">
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/85 px-3 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-xl">
+      <FullScreenSheet open={open} onClose={onClose} testId="budget-monthly" variant="drawer">
+        <header className="flex items-center gap-2 border-b px-3 py-2.5">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -141,8 +144,7 @@ export function BudgetMonthlySheet({
             <div className="flex items-start gap-2 rounded-xl border border-dashed px-3 py-3 text-xs text-muted-foreground">
               <HelpCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
               <p>
-                Anda dapat mengatur pengaturan anggaran untuk setiap bulan. Jika Anda mengubah
-                anggaran dasar, anggaran tersebut akan diterapkan mulai bulan depan.
+                {t.budget.baseBudgetHelp}
               </p>
             </div>
 
@@ -152,7 +154,7 @@ export function BudgetMonthlySheet({
               onClick={() => setPad({ kind: 'base' })}
               className="flex w-full items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="text-sm">Anggaran dasar</span>
+              <span className="text-sm">{t.budget.baseBudget}</span>
               <span
                 className="text-sm font-semibold tabular-nums"
                 data-testid="budget-base-value"
@@ -165,6 +167,7 @@ export function BudgetMonthlySheet({
               {Array.from({ length: 12 }, (_, i) => 11 - i).map((m, index) => {
                 const amount = budgetAmountFor(budget, overrides, year, m)
                 const customized = budgetMonthCustomized(budget, overrides, year, m)
+                const isCurrent = year === currentYear && m === currentMonth
                 return (
                   <button
                     key={m}
@@ -174,13 +177,24 @@ export function BudgetMonthlySheet({
                     className={cn(
                       'flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                       index > 0 && 'border-t',
+                      isCurrent && 'bg-primary/5',
                     )}
                   >
-                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                      {MONTHS[m].short}
+                    <span
+                      className={cn(
+                        'flex items-center gap-2 text-sm',
+                        isCurrent
+                          ? 'font-bold text-primary'
+                          : 'font-medium text-muted-foreground',
+                      )}
+                    >
+                      {localizedMonths[m].short}
+                      {isCurrent && (
+                        <span className="size-1.5 rounded-full bg-primary" />
+                      )}
                       {customized && (
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
-                          diubah
+                          {t.budget.edited}
                         </span>
                       )}
                     </span>
@@ -209,10 +223,10 @@ export function BudgetMonthlySheet({
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Hapus anggaran"
-        description="Apakah anda yakin ingin menghapusnya?"
-        confirmLabel="YA"
-        cancelLabel="TIDAK"
+        title={t.budget.deleteConfirmTitle}
+        description={t.budget.deleteConfirmDesc}
+        confirmLabel={t.common.confirm}
+        cancelLabel={t.common.refuse}
         onConfirm={() => {
           setConfirmOpen(false)
           onDelete(budget)

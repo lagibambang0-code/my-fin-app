@@ -1,14 +1,13 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowDown,
   ArrowUp,
   Check,
   ChevronLeft,
-  ChevronRight,
   GripVertical,
   Pencil,
   Plus,
@@ -17,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SubCategoryManager } from '@/components/sub-category-manager'
+import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
   type Category,
@@ -61,8 +61,9 @@ function normalizeName(name: string): string {
 
 export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
   const router = useRouter()
-  const { title, type } = TYPE_LABELS[categoryType]
-
+  const { t } = useTranslation()
+  const title = categoryType === 'income' ? t.settings.incomeCategory : t.settings.expenseCategory
+  const type = categoryType === 'income' ? 0 : 1
   const [categories, setCategories] = useState<Category[]>([])
   const [subCategoryMap, setSubCategoryMap] = useState<Record<string, Category[]>>({})
   const [subCategoryEnabled, setSubCategoryEnabled] = useState(false)
@@ -76,7 +77,8 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
   const [openParentUid, setOpenParentUid] = useState<string | null>(null)
   const [lastDeleted, setLastDeleted] = useState<DeletedEntry[]>([])
   const [dragIndex, setDragIndex] = useState<number | null>(null)
-
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const touchDragIndex = useRef<number | null>(null)
   const loadData = useCallback(async () => {
     await initDB()
     const [cats, setting] = await Promise.all([
@@ -167,9 +169,8 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
           syncVersion: 1,
         })
       } else if (editingId !== null) {
-        const original = categories.find((c) => c.id === editingId)?.NAME ?? ''
         await updateCategory(editingId, {
-          NAME: preserveEmoji(original, trimmed),
+          NAME: trimmed,
           C_UTIME: Date.now(),
         })
       }
@@ -218,20 +219,27 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
     await loadData()
   }
 
-  const handleDrop = async (targetIndex: number) => {
-    if (dragIndex === null || dragIndex === targetIndex) {
+  const handleDrop = async (fromIndex: number, targetIndex: number) => {
+    if (
+      fromIndex === targetIndex ||
+      fromIndex < 0 ||
+      targetIndex < 0 ||
+      fromIndex >= categories.length ||
+      targetIndex >= categories.length
+    ) {
       setDragIndex(null)
+      setDragOverIndex(null)
       return
     }
     const next = [...categories]
-    const [moved] = next.splice(dragIndex, 1)
+    const [moved] = next.splice(fromIndex, 1)
     next.splice(targetIndex, 0, moved)
     setDragIndex(null)
+    setDragOverIndex(null)
     setCategories(next)
     await reorderCategories(next.map((c) => c.id!))
     await loadData()
   }
-
   const selectedCount = selectedIds.size
 
   if (openParent) {
@@ -259,7 +267,7 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Kelola pengaturan
+              {t.settings.sectionSettings}
             </p>
             <h1 className="truncate text-lg font-bold tracking-tight">{title}</h1>
           </div>
@@ -291,10 +299,10 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                 )}
               />
             </button>
-            <span className="text-sm font-medium">Fungsi sub kategori</span>
+            <span className="text-sm font-medium">{t.settings.subCategoryFunction}</span>
           </div>
           <span className="text-xs text-muted-foreground" data-testid="sub-toggle-state">
-            {subCategoryEnabled ? 'Aktif' : 'Mati'}
+            {subCategoryEnabled ? t.common.active : t.common.inactive}
           </span>
         </div>
 
@@ -348,10 +356,44 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                 <div
                   key={cat.uid}
                   data-testid={`category-row-${cat.NAME}`}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDrop(index)}
+                  data-category-index={index}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragIndex(index)
+                    e.dataTransfer.setData('text/plain', String(index))
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  onDragEnd={() => {
+                    setDragIndex(null)
+                    setDragOverIndex(null)
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    if (dragOverIndex !== index) {
+                      setDragOverIndex(index)
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverIndex === index) {
+                      setDragOverIndex(null)
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const fromIdx = dragIndex ?? Number(e.dataTransfer.getData('text/plain'))
+                    if (!isNaN(fromIdx)) {
+                      void handleDrop(fromIdx, index)
+                    }
+                    setDragIndex(null)
+                    setDragOverIndex(null)
+                  }}
                   className={cn(
-                    'flex items-center gap-2 rounded-xl border p-2 pl-3 transition-colors',
+                    'flex items-center gap-2 rounded-xl border p-2 pl-3 transition-all',
+                    dragIndex === index && 'opacity-40 scale-[0.98] border-dashed border-primary',
+                    dragOverIndex === index &&
+                      dragIndex !== index &&
+                      'border-primary ring-2 ring-primary/30 bg-primary/5',
                     isSelected
                       ? 'border-primary/50 bg-accent text-accent-foreground'
                       : 'bg-card hover:bg-secondary',
@@ -359,25 +401,32 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                 >
                   <input
                     type="checkbox"
-                    checked={isSelected}
                     onChange={() => toggleSelect(cat.id!)}
                     aria-label={`Pilih kategori ${cat.NAME}`}
                     className="size-4 shrink-0 rounded text-primary ring-offset-background focus:ring-primary"
                   />
+                  {/*
+                    Baris tetap berguna walau fungsi sub kategori dimatikan:
+                    saklar hidup → membuka pengelola sub-kategori,
+                    saklar mati  → membuka pengubahan kategori (perilaku aplikasi asli).
+                    aria-label selalu ada supaya baris tetap terbaca pembaca layar.
+                  */}
                   <button
                     type="button"
-                    onClick={() => subCategoryEnabled && setOpenParentUid(cat.uid)}
-                    disabled={!subCategoryEnabled}
-                    className="flex min-w-0 flex-1 flex-col items-start text-left disabled:cursor-default"
+                    onClick={() =>
+                      subCategoryEnabled ? setOpenParentUid(cat.uid) : openEdit(cat)
+                    }
+                    className="flex min-w-0 flex-1 flex-col items-start text-left"
                     aria-label={
                       subCategoryEnabled
                         ? `Kelola sub kategori ${cat.NAME}`
-                        : undefined
+                        : `Ubah kategori ${cat.NAME}`
                     }
                   >
                     <span className="flex w-full items-center gap-1.5">
                       <span className="truncate text-sm">{cat.NAME}</span>
-                      {subs.length > 0 && (
+                      {/* Jumlah sub hanya bermakna saat fungsi sub kategori menyala. */}
+                      {subCategoryEnabled && subs.length > 0 && (
                         <span
                           className="shrink-0 text-xs font-medium text-primary"
                           data-testid={`sub-count-${cat.NAME}`}
@@ -387,7 +436,7 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                       )}
                       {cat.IS_DEFAULT === 1 && (
                         <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                          Bawaan
+                          {t.common.default}
                         </span>
                       )}
                     </span>
@@ -404,7 +453,7 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                       aria-label={`Naikkan ${cat.NAME}`}
                       disabled={index === 0}
                       onClick={() => move(index, -1)}
-                      className="text-muted-foreground"
+                      className="sr-only"
                     >
                       <ArrowUp className="size-3.5" />
                     </Button>
@@ -414,7 +463,7 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                       aria-label={`Turunkan ${cat.NAME}`}
                       disabled={index === categories.length - 1}
                       onClick={() => move(index, 1)}
-                      className="text-muted-foreground"
+                      className="sr-only"
                     >
                       <ArrowDown className="size-3.5" />
                     </Button>
@@ -426,18 +475,51 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                     >
                       <Pencil className="size-4" />
                     </Button>
-                    {subCategoryEnabled ? (
-                      <span
-                        draggable
-                        onDragStart={() => setDragIndex(index)}
-                        className="cursor-grab p-1 text-muted-foreground active:cursor-grabbing"
-                        aria-hidden="true"
-                      >
-                        <GripVertical className="size-4" />
-                      </span>
-                    ) : (
-                      <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                    )}
+                    <span
+                      data-testid="drag-handle"
+                      onDragStart={(e) => {
+                        e.stopPropagation()
+                        setDragIndex(index)
+                        e.dataTransfer.setData('text/plain', String(index))
+                        e.dataTransfer.effectAllowed = 'move'
+                      }}
+                      onDragEnd={() => {
+                        setDragIndex(null)
+                        setDragOverIndex(null)
+                      }}
+                      onTouchStart={() => {
+                        touchDragIndex.current = index
+                        setDragIndex(index)
+                      }}
+                      onTouchMove={(e) => {
+                        if (touchDragIndex.current === null) return
+                        const touch = e.touches[0]
+                        const target = document.elementFromPoint(touch.clientX, touch.clientY)
+                        const row = target?.closest('[data-category-index]')
+                        if (row) {
+                          const targetIdx = Number(row.getAttribute('data-category-index'))
+                          if (!isNaN(targetIdx) && targetIdx !== dragOverIndex) {
+                            setDragOverIndex(targetIdx)
+                          }
+                        }
+                      }}
+                      onTouchEnd={() => {
+                        if (
+                          touchDragIndex.current !== null &&
+                          dragOverIndex !== null &&
+                          touchDragIndex.current !== dragOverIndex
+                        ) {
+                          void handleDrop(touchDragIndex.current, dragOverIndex)
+                        }
+                        touchDragIndex.current = null
+                        setDragIndex(null)
+                        setDragOverIndex(null)
+                      }}
+                      className="cursor-grab p-1.5 text-muted-foreground hover:text-foreground active:cursor-grabbing touch-none select-none"
+                      aria-hidden="true"
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
                   </div>
                 </div>
               )
@@ -447,7 +529,7 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
       </div>
 
       {formMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px] transition-all animate-in fade-in duration-150">
           <div
             role="dialog"
             aria-modal="true"

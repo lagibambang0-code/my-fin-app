@@ -50,7 +50,7 @@ export function TransactionTagPicker({
 
   return (
     <Overlay open={open} onClose={onClose} align="bottom" testId="trx-tag-picker" label="Tag">
-      <div className="mx-auto w-full max-w-md rounded-2xl border bg-card p-4 shadow-xl">
+      <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-base font-bold">Tag</h2>
           <Button variant="ghost" size="icon-sm" aria-label="Tutup" onClick={onClose}>

@@ -1,9 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Lock } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronLeft, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { TabPage } from '@/components/tab-page'
+import { useTranslation } from '@/components/language-provider'
 import { initDB, getSettingByKey, setSetting } from '@/lib/db'
 import { PasswordScreen } from '@/components/password-screen'
 
@@ -62,14 +63,35 @@ export function PasswordSettingsScreen() {
       />
     )
   }
+  const router = useRouter()
+  const { t } = useTranslation()
 
   return (
-    <TabPage title="Kata sandi" subtitle="Proteksi aplikasi dengan PIN" icon={Lock}>
+    <div className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-30 bg-background/80 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-4 backdrop-blur-xl md:px-10 md:pt-6 md:pb-8">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Kembali"
+            data-testid="password-back"
+            onClick={() => router.back()}
+          >
+            <ChevronLeft className="size-5" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+              {t.nav.more}
+            </p>
+            <h1 className="truncate text-lg font-bold tracking-tight">{t.passcode.title}</h1>
+          </div>
+        </div>
+      </header>
+
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6 md:px-10 md:pb-8">
         <div className="rounded-xl border border-dashed px-3 py-3 text-xs text-pretty text-muted-foreground">
           <p>
-            Amankan aplikasi dengan PIN 4 digit. Jika aktif, aplikasi akan meminta
-            PIN setiap kali dibuka.
+            {t.passcode.helpText}
           </p>
         </div>
 
@@ -80,17 +102,17 @@ export function PasswordSettingsScreen() {
                 <Lock className="size-4" />
               </span>
               <div>
-                <p className="text-sm font-medium">Kata sandi</p>
-                <p className="text-xs text-muted-foreground">{status}</p>
+                <p className="text-sm font-medium">{t.passcode.title}</p>
+                <p className="text-xs text-muted-foreground">{status === 'Mati' ? t.passcode.off : t.passcode.on}</p>
               </div>
             </div>
             {status === 'Mati' ? (
               <Button onClick={() => setState('set')} data-testid="password-set">
-                Atur
+                {t.passcode.turnOn}
               </Button>
             ) : (
               <Button onClick={() => setState('verify')} data-passwordid="password-manage">
-                Kelola
+                {t.passcode.change}
               </Button>
             )}
           </div>
@@ -110,6 +132,6 @@ export function PasswordSettingsScreen() {
           </div>
         )}
       </div>
-    </TabPage>
+    </div>
   )
 }

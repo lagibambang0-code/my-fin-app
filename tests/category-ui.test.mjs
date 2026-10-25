@@ -8,7 +8,7 @@
 import { spawn } from 'node:child_process'
 import puppeteer from 'puppeteer'
 
-const BASE = 'http://localhost:3000'
+const BASE = process.env.APP_BASE ?? 'http://localhost:3000'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 let server = null
@@ -242,9 +242,9 @@ async function main() {
       }
     })
 
-    await test('TC-PNG-U01: ubah "Food" → "Makanan" (emoji dipertahankan)', async () => {
+    await test('TC-PNG-U01: ubah "Food" → "🍜 Makanan"', async () => {
       await click(page, '[aria-label="Ubah kategori 🍜 Food"]')
-      await setInput(page, '#category-name-input', 'Makanan')
+      await setInput(page, '#category-name-input', '🍜 Makanan')
       await click(page, '[aria-label="Simpan kategori"]')
       await waitFor(page, '[data-testid="category-row-🍜 Makanan"]')
       const names = await rowNames(page)
@@ -323,7 +323,10 @@ async function main() {
     // -----------------------------------------------------------------------
     console.log('\n▶ TS-06: Sub Kategori')
     await test('TC-SUB-01/02: aktifkan "Fungsi sub kategori"', async () => {
-      await click(page, '[data-testid="sub-toggle"]')
+      const state = await textOf(page, '[data-testid="sub-toggle-state"]')
+      if (state !== 'Aktif') {
+        await click(page, '[data-testid="sub-toggle"]')
+      }
       assert(
         (await textOf(page, '[data-testid="sub-toggle-state"]')) === 'Aktif',
         'toggle state did not become Aktif',
@@ -392,6 +395,127 @@ async function main() {
       await waitFor(page, '[data-testid="category-row-Lunch"]')
     })
 
+    await test('TC-SUB-E03: ganti kategori induk sub', async () => {
+      await click(page, '[aria-label="Kelola sub kategori 🍜 Makanan"]')
+      await waitFor(page, '[data-testid="sub-category-manager"]')
+
+      // tambah sub di Food, lalu pindahkan induknya ke Transport
+      await click(page, '[aria-label="Tambah sub kategori"]')
+      await setInput(page, '#sub-name-input', 'ZzPindah')
+      await click(page, '[aria-label="Simpan sub kategori"]')
+      await waitFor(page, '[data-testid="sub-row-ZzPindah"]')
+
+      await click(page, '[aria-label="Ubah sub kategori ZzPindah"]')
+      await click(page, '[aria-label="Kategori induk"]')
+      await waitFor(page, '[data-testid="sub-parent-picker"]')
+      await click(page, '[aria-label="Pilih kategori 🚖 Transport"]')
+      await click(page, '[aria-label="Simpan sub kategori"]')
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="sub-row-ZzPindah"]'),
+        { timeout: 12000 },
+      )
+      assert(
+        !(await subNames(page)).includes('ZzPindah'),
+        'sub yang dipindah masih terdaftar di kategori asal',
+      )
+
+      await click(page, '[aria-label="Kembali ke daftar kategori"]')
+      await waitFor(page, '[data-testid="sub-count-🚖 Transport"]')
+      assert(
+        await hasText(page, '[data-testid="sub-count-🚖 Transport"]', '(5)'),
+        'kategori tujuan tidak menerima sub yang dipindah',
+      )
+
+      // bersihkan: hapus sub uji dari Transport
+      await click(page, '[aria-label="Kelola sub kategori 🚖 Transport"]')
+      await waitFor(page, '[data-testid="sub-row-ZzPindah"]')
+      await click(page, '[aria-label="Pilih sub kategori ZzPindah"]')
+      await click(page, '[aria-label="Hapus sub terpilih"]')
+      await clickText(page, '[data-testid="confirm-dialog"]', 'Hapus')
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="sub-row-ZzPindah"]'),
+        { timeout: 12000 },
+      )
+      await click(page, '[aria-label="Kembali ke daftar kategori"]')
+      await waitFor(page, '[data-testid="category-row-🍜 Makanan"]')
+    })
+
+    await test('TC-SUB-E04: pintasan "Kategori utama" pada dialog tambah', async () => {
+      await click(page, '[aria-label="Kelola sub kategori 🍜 Makanan"]')
+      await waitFor(page, '[data-testid="sub-category-manager"]')
+      await click(page, '[aria-label="Tambah sub kategori"]')
+      await waitFor(page, '[aria-label="Jadikan kategori utama"]')
+      await setInput(page, '#sub-name-input', 'ZzUtama')
+      await click(page, '[aria-label="Jadikan kategori utama"]')
+      await clickText(page, '[data-testid="confirm-dialog"]', 'Ya')
+
+      // kategori utama dibuat, bukan sub
+      await page.waitForFunction(() => !document.querySelector('#sub-name-input'), {
+        timeout: 12000,
+      })
+      assert(
+        !(await subNames(page)).includes('ZzUtama'),
+        'nama uji ikut tersimpan sebagai sub kategori',
+      )
+
+      await click(page, '[aria-label="Kembali ke daftar kategori"]')
+      await waitFor(page, '[data-testid="category-row-ZzUtama"]')
+
+      // bersihkan
+      await click(page, '[aria-label="Pilih kategori ZzUtama"]')
+      await click(page, '[aria-label="Hapus kategori terpilih"]')
+      await clickText(page, '[data-testid="confirm-dialog"]', 'Hapus')
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="category-row-ZzUtama"]'),
+        { timeout: 12000 },
+      )
+    })
+
+    await test('TC-SUB-E05: baris kategori tetap berguna saat saklar dimatikan', async () => {
+      await click(page, '[data-testid="sub-toggle"]')
+      assert(
+        (await textOf(page, '[data-testid="sub-toggle-state"]')) === 'Mati',
+        'saklar tidak menjadi Mati',
+      )
+
+      const rowBtn = await page.$eval('[aria-label="Ubah kategori 🍜 Makanan"]', (el) => ({
+        label: el.getAttribute('aria-label'),
+        disabled: el.disabled,
+      }))
+      assert(rowBtn.disabled === false, 'tombol baris masih nonaktif')
+      assert(
+        (await exists(page, '[aria-label^="Kelola sub kategori"]')) === false,
+        'label "Kelola sub kategori" masih ada saat saklar mati',
+      )
+
+      // T-32: jumlah sub dan daftar nama sub ikut hilang saat saklar mati.
+      const rowOff = await textOf(page, '[data-testid="category-row-🍜 Makanan"]')
+      assert(!/\(\d+\)/.test(rowOff), `label baris masih memuat jumlah sub: "${rowOff}"`)
+      assert(!rowOff.includes('Dinner'), `nama sub masih tampil: "${rowOff}"`)
+      assert(
+        (await exists(page, '[data-testid="sub-count-🍜 Makanan"]')) === false,
+        'elemen sub-count masih dirender saat saklar mati',
+      )
+
+      await click(page, '[aria-label="Ubah kategori 🍜 Makanan"]')
+      await waitFor(page, '#category-form-title')
+      assert(
+        (await textOf(page, '#category-form-title')) === 'Edit kategori',
+        'menekan baris tidak membuka pengubahan kategori',
+      )
+      await clickText(page, '[role="dialog"]', 'Batal')
+
+      await click(page, '[data-testid="sub-toggle"]')
+      assert(
+        (await textOf(page, '[data-testid="sub-toggle-state"]')) === 'Aktif',
+        'saklar tidak kembali Aktif',
+      )
+      assert(
+        await hasText(page, '[data-testid="sub-count-🍜 Makanan"]', '(3)'),
+        'jumlah sub tidak kembali setelah saklar dinyalakan',
+      )
+    })
+
     // -----------------------------------------------------------------------
     console.log('\n▶ TS-01: Kategori Pendapatan')
     await page.goto(`${BASE}/lainnya/kategori-pendapatan`, { waitUntil: 'networkidle0' })
@@ -404,9 +528,9 @@ async function main() {
       }
     })
 
-    await test('TC-PND-U01: ubah "Allowance" → "Uang Saku"', async () => {
+    await test('TC-PND-U01: ubah "Allowance" → "🤑 Uang Saku"', async () => {
       await click(page, '[aria-label="Ubah kategori 🤑 Allowance"]')
-      await setInput(page, '#category-name-input', 'Uang Saku')
+      await setInput(page, '#category-name-input', '🤑 Uang Saku')
       await click(page, '[aria-label="Simpan kategori"]')
       await waitFor(page, '[data-testid="category-row-🤑 Uang Saku"]')
     })

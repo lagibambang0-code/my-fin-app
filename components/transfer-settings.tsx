@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { useTranslation } from '@/components/language-provider'
 import { getAllAssets, getAssetGroups, updateAsset, type Asset, type AssetGroup } from '@/lib/db'
 
 /** Group types considered "hard to liquidate" (PRD-08 §3.2.9). */
@@ -12,9 +13,9 @@ const ILLIQUID_TYPES = new Set([4, 5, 8, 10])
 
 export function TransferSettings() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
-
   const load = useCallback(async () => {
     setGroups(await getAssetGroups())
     setAssets(await getAllAssets())
@@ -34,6 +35,7 @@ export function TransferSettings() {
   }
 
   const eligible = groups.filter((g) => ILLIQUID_TYPES.has(g.TYPE))
+  const eligibleAssets = eligible.flatMap((g) => assets.filter((a) => a.groupUid === g.uid))
 
   return (
     <div className="flex flex-1 flex-col">
@@ -49,10 +51,10 @@ export function TransferSettings() {
           </Button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Kelola aset
+              {t.settings.manageAsset}
             </p>
             <h1 className="truncate text-lg font-bold tracking-tight">
-              Pengaturan pengeluaran transfer
+              {t.asset.transferExpense}
             </h1>
           </div>
         </div>
@@ -60,14 +62,12 @@ export function TransferSettings() {
 
       <div className="flex flex-1 flex-col px-4 md:px-10">
         <p className="mb-4 text-xs text-muted-foreground">
-          Aktifkan aset di bawah agar transfer masuk ke aset sulit dilikuidasi tercatat sebagai
-          beban, dan transfer keluar sebagai penghasilan. Tidak berlaku untuk grup tunai, bank,
-          kartu, dan cek.
+          {t.asset.transferExpenseDesc}
         </p>
 
-        {eligible.length === 0 ? (
+        {eligibleAssets.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground" data-testid="transfer-empty">
-            Tidak ada data
+            {t.common.noData}
           </p>
         ) : (
           eligible.map((group) => {

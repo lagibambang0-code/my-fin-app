@@ -111,8 +111,8 @@ export function TransactionFilterSheet({
   if (!open) return null
 
   return (
-    <Overlay open={open} onClose={onClose} testId="filter-screen" label="Filter transaksi">
-      <div className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border bg-card shadow-xl">
+    <Overlay open={open} onClose={onClose} align="bottom" testId="filter-screen" label="Filter transaksi">
+      <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border-t bg-card pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-0">
         <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
           <h2 className="min-w-0 text-sm font-bold text-balance">
             Silahkan pilih item yang ingin Anda filter
