@@ -1,7 +1,7 @@
 import { Dexie, type Table } from 'dexie'
 import { toIso, todayIso } from '@/lib/format'
 import { ACTIVE_REPEAT_TYPES, nextRepeatDate, reflectDate } from '@/lib/repeat-utils'
-
+import { findIsoCurrency } from '@/lib/currencies'
 export type Currency = {
   id?: number
   uid: string
@@ -554,8 +554,121 @@ export const SEED_CURRENCIES: Omit<Currency, 'id'>[] = [
     syncTime: 0,
     syncVersion: 1,
   },
+  {
+    uid: 'EUR_EUR',
+    NAME: 'EUR - Euro (€)',
+    ISO: 'EUR',
+    MAIN_ISO: 'EUR',
+    IS_DEL: 0,
+    ORDER_SEQ: 3,
+    RATE: 1,
+    SYMBOL: '€',
+    INSERT_TYPE: 'manual',
+    SYMBOL_POSITION: 'front',
+    IS_MAIN_CURRENCY: 0,
+    IS_SHOW: 1,
+    MODIFY_DATE: NOW,
+    DECIMAL_POINT: 2,
+    isSynced: 0,
+    syncTime: 0,
+    syncVersion: 1,
+  },
+  {
+    uid: 'SGD_SGD',
+    NAME: 'SGD - Singapore ($)',
+    ISO: 'SGD',
+    MAIN_ISO: 'SGD',
+    IS_DEL: 0,
+    ORDER_SEQ: 4,
+    RATE: 1,
+    SYMBOL: '$',
+    INSERT_TYPE: 'manual',
+    SYMBOL_POSITION: 'front',
+    IS_MAIN_CURRENCY: 0,
+    IS_SHOW: 1,
+    MODIFY_DATE: NOW,
+    DECIMAL_POINT: 2,
+    isSynced: 0,
+    syncTime: 0,
+    syncVersion: 1,
+  },
+  {
+    uid: 'MYR_MYR',
+    NAME: 'MYR - Malaysia (RM)',
+    ISO: 'MYR',
+    MAIN_ISO: 'MYR',
+    IS_DEL: 0,
+    ORDER_SEQ: 5,
+    RATE: 1,
+    SYMBOL: 'RM',
+    INSERT_TYPE: 'manual',
+    SYMBOL_POSITION: 'front',
+    IS_MAIN_CURRENCY: 0,
+    IS_SHOW: 1,
+    MODIFY_DATE: NOW,
+    DECIMAL_POINT: 2,
+    isSynced: 0,
+    syncTime: 0,
+    syncVersion: 1,
+  },
+  {
+    uid: 'JPY_JPY',
+    NAME: 'JPY - Japan (¥)',
+    ISO: 'JPY',
+    MAIN_ISO: 'JPY',
+    IS_DEL: 0,
+    ORDER_SEQ: 6,
+    RATE: 1,
+    SYMBOL: '¥',
+    INSERT_TYPE: 'manual',
+    SYMBOL_POSITION: 'front',
+    IS_MAIN_CURRENCY: 0,
+    IS_SHOW: 1,
+    MODIFY_DATE: NOW,
+    DECIMAL_POINT: 0,
+    isSynced: 0,
+    syncTime: 0,
+    syncVersion: 1,
+  },
+  {
+    uid: 'GBP_GBP',
+    NAME: 'GBP - UK (£)',
+    ISO: 'GBP',
+    MAIN_ISO: 'GBP',
+    IS_DEL: 0,
+    ORDER_SEQ: 7,
+    RATE: 1,
+    SYMBOL: '£',
+    INSERT_TYPE: 'manual',
+    SYMBOL_POSITION: 'front',
+    IS_MAIN_CURRENCY: 0,
+    IS_SHOW: 1,
+    MODIFY_DATE: NOW,
+    DECIMAL_POINT: 2,
+    isSynced: 0,
+    syncTime: 0,
+    syncVersion: 1,
+  },
+  {
+    uid: 'AUD_AUD',
+    NAME: 'AUD - Australia (A$)',
+    ISO: 'AUD',
+    MAIN_ISO: 'AUD',
+    IS_DEL: 0,
+    ORDER_SEQ: 8,
+    RATE: 1,
+    SYMBOL: 'A$',
+    INSERT_TYPE: 'manual',
+    SYMBOL_POSITION: 'front',
+    IS_MAIN_CURRENCY: 0,
+    IS_SHOW: 1,
+    MODIFY_DATE: NOW,
+    DECIMAL_POINT: 2,
+    isSynced: 0,
+    syncTime: 0,
+    syncVersion: 1,
+  },
 ]
-
 /** Default ZETC settings (verified keys from Money Manager .mmbak). */
 export const SEED_SETTINGS: Omit<Setting, 'id'>[] = [
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '1', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'start_day', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
@@ -751,14 +864,39 @@ export async function seedDatabase(): Promise<void> {
   if (tagCount === 0) {
     await db.tags.bulkAdd(SEED_TAGS)
   }
+  // Ensure default currencies are all present in DB
+  for (const seed of SEED_CURRENCIES) {
+    const existing = await db.currencies.where('uid').equals(seed.uid).first()
+    if (!existing) {
+      await db.currencies.add({
+        ...seed,
+        IS_MAIN_CURRENCY: 0,
+      })
+    }
+  }
 
-  // Ensure USD is default main currency
-  const usd = await db.currencies.where('uid').equals('USD_USD').first()
-  if (usd && usd.IS_MAIN_CURRENCY !== 1) {
-    const mainCurSetting = await db.settings.where('dataTypeKey').equals('main_currency').first()
-    if (!mainCurSetting) {
-      await db.currencies.where('uid').equals('IDR_IDR').modify({ IS_MAIN_CURRENCY: 0 })
-      await db.currencies.where('uid').equals('USD_USD').modify({ IS_MAIN_CURRENCY: 1 })
+  // Ensure main currency follows user setting if set, or defaults to USD
+  const mainCurSetting = await db.settings.where('dataTypeKey').equals('main_currency').first()
+  if (mainCurSetting?.ZDATA) {
+    const targetUid = mainCurSetting.ZDATA
+    const current = await db.currencies.where('IS_MAIN_CURRENCY').equals(1).first()
+    if (!current || current.uid !== targetUid) {
+      const all = await db.currencies.toArray()
+      for (const c of all) {
+        const shouldBeMain = c.uid === targetUid ? 1 : 0
+        if (c.IS_MAIN_CURRENCY !== shouldBeMain && c.id != null) {
+          await db.currencies.update(c.id, { IS_MAIN_CURRENCY: shouldBeMain })
+        }
+      }
+    }
+  } else {
+    // If no main currency is set at all (fresh install), default to USD
+    const hasMain = await db.currencies.where('IS_MAIN_CURRENCY').equals(1).count()
+    if (hasMain === 0) {
+      const usd = await db.currencies.where('uid').equals('USD_USD').first()
+      if (usd?.id != null) {
+        await db.currencies.update(usd.id, { IS_MAIN_CURRENCY: 1 })
+      }
     }
   }
 }
@@ -1227,6 +1365,51 @@ export async function getMainCurrency(): Promise<Currency | undefined> {
   if (main) return main
   const rows = await db.currencies.toArray()
   return rows.sort((a, b) => a.ORDER_SEQ - b.ORDER_SEQ)[0]
+}
+
+/** Set the main currency by uid. Updates IS_MAIN_CURRENCY flags and persists preference. */
+export async function setMainCurrency(uid: string): Promise<void> {
+  let target = await db.currencies.where('uid').equals(uid).first()
+  if (!target) {
+    const code = uid.split('_')[0]
+    const iso = findIsoCurrency(code)
+    const maxOrder = (await db.currencies.toArray()).reduce(
+      (max, c) => Math.max(max, c.ORDER_SEQ || 0),
+      0,
+    )
+    const newId = await db.currencies.add({
+      uid,
+      NAME: iso ? `${code} - ${iso.name}` : code,
+      ISO: code,
+      MAIN_ISO: code,
+      IS_DEL: 0,
+      ORDER_SEQ: maxOrder + 1,
+      RATE: 1,
+      SYMBOL: iso?.symbol ?? code,
+      INSERT_TYPE: 'manual',
+      SYMBOL_POSITION: 'front',
+      IS_MAIN_CURRENCY: 1,
+      IS_SHOW: 1,
+      MODIFY_DATE: Date.now(),
+      DECIMAL_POINT: code === 'IDR' || code === 'JPY' ? 0 : 2,
+      isSynced: 0,
+      syncTime: 0,
+      syncVersion: 1,
+    })
+    target = await db.currencies.get(newId)
+  }
+
+  const all = await db.currencies.toArray()
+  for (const c of all) {
+    const shouldBeMain = c.uid === uid ? 1 : 0
+    if (c.IS_MAIN_CURRENCY !== shouldBeMain && c.id != null) {
+      await db.currencies.update(c.id, {
+        IS_MAIN_CURRENCY: shouldBeMain,
+        MODIFY_DATE: Date.now(),
+      })
+    }
+  }
+  await setSetting('main_currency', uid)
 }
 
 export async function getCurrencyByUid(uid: string): Promise<Currency | undefined> {

@@ -10,6 +10,7 @@ import {
   db,
   initDB,
   getMainCurrency,
+  setMainCurrency,
   getSettingByKey,
   setSetting,
   type Currency,
@@ -50,19 +51,25 @@ function RowButton({
   label,
   value,
   onClick,
+  testId,
 }: {
   label: string
   value: string
   onClick: () => void
+  testId?: string
 }) {
   return (
     <button
       type="button"
+      data-testid={testId}
       onClick={onClick}
       className="flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <span className="text-sm font-medium">{label}</span>
-      <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+      <span
+        className="flex items-center gap-1 text-xs font-semibold text-muted-foreground"
+        data-testid={testId ? `${testId}-value` : undefined}
+      >
         {value}
         <ChevronRight className="size-3.5" />
       </span>
@@ -134,19 +141,6 @@ function PickerOverlay<T extends string>({
 
 type Sheet = 'currency' | 'week' | 'month' | null
 
-/** Swap IS_MAIN_CURRENCY flags so `uid` becomes the new main currency. */
-async function setMainCurrency(uid: string): Promise<void> {
-  const all: Currency[] = await db.currencies.toArray()
-  for (const c of all) {
-    const shouldBeMain = c.uid === uid ? 1 : 0
-    if (c.IS_MAIN_CURRENCY !== shouldBeMain && c.id != null) {
-      await db.currencies.update(c.id, {
-        IS_MAIN_CURRENCY: shouldBeMain,
-        MODIFY_DATE: Date.now(),
-      })
-    }
-  }
-}
 
 export function GeneralSettingsScreen() {
   const router = useRouter()
@@ -238,21 +232,23 @@ export function GeneralSettingsScreen() {
           <RowButton
             label={t.general.mainCurrency}
             value={currencyLabel}
+            testId="setting-currency"
             onClick={() => setSheet('currency')}
           />
           <RowButton
             label={t.general.weekStart}
             value={weekLabel}
+            testId="setting-week-start"
             onClick={() => setSheet('week')}
           />
           <RowButton
             label={t.general.monthStart}
             value={monthLabel}
+            testId="setting-month-start"
             onClick={() => setSheet('month')}
           />
         </div>
       </div>
-
       <PickerOverlay
         open={sheet === 'currency'}
         title={t.general.mainCurrency}

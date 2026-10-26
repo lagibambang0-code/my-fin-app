@@ -245,9 +245,200 @@ export function subCategoryBreakdown(
     }))
     .sort((a, b) => b.amount - a.amount)
 }
-
 export type TrendPoint = { key: string; label: string; amount: number }
 
+export type LineChartPoint = {
+  key: string
+  label: string
+  subLabel?: string
+  amount: number
+  fullDate: string
+}
+
+export type AverageMetrics = {
+  dailyAverage: number
+  activeDayAverage: number
+  elapsedDays: number
+  activeDays: number
+}
+
+/**
+ * Menghitung metrik rata-rata harian (elapsed days) dan rata-rata asli (active days).
+ */
+export function calculateAverages(
+  total: number,
+  rows: Transaction[],
+  type: 'income' | 'expense',
+  state: StatsState,
+  todayDate: Date = new Date(),
+): AverageMetrics {
+  const safeTotal = Number.isFinite(total) && total > 0 ? total : 0
+  let elapsedDays = 1
+
+  if (state.mode === 'weekly') {
+    const start = fromIso(state.weekStart)
+    const end = addDays(start, 6)
+    if (todayDate < start) {
+      elapsedDays = 1
+    } else if (todayDate > end) {
+      elapsedDays = 7
+    } else {
+      elapsedDays = Math.max(1, daySpan(toIso(start), toIso(todayDate)))
+    }
+  } else if (state.mode === 'monthly') {
+    const monthEnd = new Date(state.anchor.year, state.anchor.month + 1, 0)
+    const totalDaysInMonth = monthEnd.getDate()
+    const isCurrentMonth =
+      todayDate.getFullYear() === state.anchor.year &&
+      todayDate.getMonth() === state.anchor.month
+    const isPastMonth =
+      new Date(state.anchor.year, state.anchor.month + 1, 1) <= todayDate
+
+    if (isCurrentMonth) {
+      elapsedDays = Math.min(totalDaysInMonth, Math.max(1, todayDate.getDate()))
+    } else if (isPastMonth) {
+      elapsedDays = totalDaysInMonth
+    } else {
+      elapsedDays = 1
+    }
+  } else if (state.mode === 'yearly') {
+    const isCurrentYear = todayDate.getFullYear() === state.anchor.year
+    const isPastYear = state.anchor.year < todayDate.getFullYear()
+
+    if (isCurrentYear) {
+      const startOfYear = new Date(state.anchor.year, 0, 1)
+      elapsedDays = Math.max(1, daySpan(toIso(startOfYear), toIso(todayDate)))
+    } else if (isPastYear) {
+      const isLeap = new Date(state.anchor.year, 1, 29).getDate() === 29
+      elapsedDays = isLeap ? 366 : 365
+    } else {
+      elapsedDays = 1
+    }
+  } else if (state.mode === 'period') {
+    const start = fromIso(state.from)
+    const end = fromIso(state.to)
+    const totalDays = daySpan(state.from, state.to)
+    if (todayDate < start) {
+      elapsedDays = 1
+    } else if (todayDate > end) {
+      elapsedDays = totalDays
+    } else {
+      elapsedDays = Math.max(1, daySpan(state.from, toIso(todayDate)))
+    }
+  }
+
+  // Rata-rata harian = total / jumlah hari berjalan
+  const dailyAverage = safeTotal / Math.max(1, elapsedDays)
+
+  // Rata-rata asli = total / jumlah hari unik yang benar-benar ada transaksi
+  const uniqueDates = new Set(
+    rows
+      .filter((tx) => tx.DO_TYPE === type && amountOf(tx) > 0)
+      .map((tx) => tx.ZDATE),
+  )
+  const activeDays = uniqueDates.size
+  const activeDayAverage = activeDays > 0 ? safeTotal / activeDays : 0
+
+  return {
+    dailyAverage,
+    activeDayAverage,
+    elapsedDays,
+    activeDays,
+  }
+}
+
+/**
+ * Menghasilkan deret titik data untuk Grafik Garis (Line Chart).
+ * Mengembalikan null jika mode 'period' (ditiadakan sesuai instruksi).
+ * Untuk tanggal tanpa data, nilai amount bernilai default 0.
+ */
+export function getLineChartPoints(
+  rows: Transaction[],
+  type: 'income' | 'expense',
+  state: StatsState,
+  categoryUid?: string | null,
+  categories?: Map<string, Category>,
+): LineChartPoint[] | null {
+  if (state.mode === 'period') {
+    return null
+  }
+
+  // Filter transaksi yang sesuai jenis dan kategori (jika categoryUid diberikan)
+  const matchingRows = rows.filter((tx) => {
+    if (tx.DO_TYPE !== type) return false
+    if (categoryUid && categories) {
+      return reportingCategoryUid(tx, categories) === categoryUid
+    }
+    return true
+  })
+  if (state.mode === 'weekly') {
+    const start = fromIso(state.weekStart)
+    const points: LineChartPoint[] = []
+    const weekLabels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']
+
+    for (let i = 0; i < 7; i++) {
+      const curr = addDays(start, i)
+      const iso = toIso(curr)
+      // Senin = 1, Minggu = 0 -> mapping index ke weekLabels
+      const dayIdx = (curr.getDay() + 6) % 7
+      const dayTotal = matchingRows
+        .filter((tx) => tx.ZDATE === iso)
+        .reduce((sum, tx) => sum + amountOf(tx), 0)
+
+      points.push({
+        key: iso,
+        label: weekLabels[dayIdx],
+        subLabel: String(curr.getDate()),
+        amount: dayTotal, // default 0 jika tidak ada transaksi
+        fullDate: formatShortDate(iso),
+      })
+    }
+    return points
+  }
+
+  if (state.mode === 'monthly') {
+    const points: LineChartPoint[] = []
+    const daysInMonth = new Date(state.anchor.year, state.anchor.month + 1, 0).getDate()
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const curr = new Date(state.anchor.year, state.anchor.month, day)
+      const iso = toIso(curr)
+      const dayTotal = matchingRows
+        .filter((tx) => tx.ZDATE === iso)
+        .reduce((sum, tx) => sum + amountOf(tx), 0)
+
+      points.push({
+        key: iso,
+        label: String(day),
+        amount: dayTotal, // default 0
+        fullDate: formatShortDate(iso),
+      })
+    }
+    return points
+  }
+
+  if (state.mode === 'yearly') {
+    const points: LineChartPoint[] = []
+    for (let m = 0; m < 12; m++) {
+      const bounds = monthBounds(state.anchor.year, m)
+      const from = toIso(bounds.start)
+      const to = toIso(bounds.end)
+      const monthTotal = matchingRows
+        .filter((tx) => tx.ZDATE >= from && tx.ZDATE <= to)
+        .reduce((sum, tx) => sum + amountOf(tx), 0)
+
+      points.push({
+        key: `${state.anchor.year}-${String(m + 1).padStart(2, '0')}`,
+        label: MONTHS[m].short,
+        amount: monthTotal, // default 0
+        fullDate: `${MONTHS[m].full} ${state.anchor.year}`,
+      })
+    }
+    return points
+  }
+
+  return null
+}
 /** Monthly totals for the drill-down bar chart (e.g. Mar…Okt). */
 export function categoryTrend(rows: Transaction[], months: MonthValue[]): TrendPoint[] {
   return months.map(({ year, month }) => {

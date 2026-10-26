@@ -3,14 +3,15 @@
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FullScreenSheet } from '@/components/ui/overlay'
-import { MonthlyBarChart } from '@/components/statistik-chart'
+import { MonthlyBarChart, StatistikLineChart } from '@/components/statistik-chart'
 import { useTranslation } from '@/components/language-provider'
-import { TransactionRow, TransactionsEmpty, type Lookups } from '@/components/transaction-list'
+import { DailyTransactionList, TransactionRow, TransactionsEmpty, type Lookups } from '@/components/transaction-list'
 import { formatCurrency } from '@/lib/format'
 import type { Transaction } from '@/lib/db'
 import {
   formatPercent,
   type CategoryStat,
+  type LineChartPoint,
   type SubStat,
   type TrendPoint,
 } from '@/lib/statistics-utils'
@@ -24,6 +25,8 @@ type StatistikDetailProps = {
   subStats: SubStat[]
   /** Monthly totals for the trend chart. */
   trend: TrendPoint[]
+  linePoints?: LineChartPoint[] | null
+  mode?: 'weekly' | 'monthly' | 'yearly' | 'period'
   rangeLabel: string
   /** "bulanan" / "tahunan" / … for the total row label. */
   modeNoun: string
@@ -42,6 +45,8 @@ export function StatistikDetail({
   rows,
   subStats,
   trend,
+  linePoints,
+  mode,
   rangeLabel,
   modeNoun,
   lookups,
@@ -117,8 +122,19 @@ export function StatistikDetail({
               currency={lookups.currency}
             />
           </div>
-
-          {stat.amount > 0 && <MonthlyBarChart points={trend} currency={lookups.currency} />}
+          {/* Grafik Garis Kategori yang Mengikuti Filter Mode yang Dipilih */}
+          {linePoints ? (
+            <StatistikLineChart
+              points={linePoints}
+              currency={lookups.currency}
+              mode={mode ?? 'monthly'}
+              color={stat.color}
+              title={`${stat.name} · ${mode === 'yearly' ? t.stats.monthlyTrend : t.stats.dailyTrend}`}
+              testId="stats-detail-chart"
+            />
+          ) : stat.amount > 0 ? (
+            <MonthlyBarChart points={trend} currency={lookups.currency} />
+          ) : null}
 
           <section data-testid="stats-detail-transactions">
             <h2 className="px-1 pb-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
@@ -127,17 +143,11 @@ export function StatistikDetail({
             {rows.length === 0 ? (
               <TransactionsEmpty testId="stats-detail-empty" />
             ) : (
-              <div className="overflow-hidden rounded-2xl border bg-card">
-                {rows.map((tx) => (
-                  <TransactionRow
-                    key={tx.uid}
-                    tx={tx}
-                    lookups={lookups}
-                    onOpen={onOpenTransaction}
-                    showDate
-                  />
-                ))}
-              </div>
+              <DailyTransactionList
+                transactions={rows}
+                lookups={lookups}
+                onOpen={onOpenTransaction}
+              />
             )}
           </section>
         </div>

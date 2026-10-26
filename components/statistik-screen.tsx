@@ -8,7 +8,7 @@ import { Overlay } from '@/components/ui/overlay'
 import { DatePickerSheet } from '@/components/ui/date-picker-sheet'
 import { PickerSheet } from '@/components/ui/picker-sheet'
 import { MonthNavigator } from '@/components/month-navigator'
-import { CategoryBarChart } from '@/components/statistik-chart'
+import { CategoryBarChart, StatistikLineChart } from '@/components/statistik-chart'
 import { StatistikDetail } from '@/components/statistik-detail'
 import { BookmarkScreen } from '@/components/bookmark-screen'
 import { TransactionForm, type TransactionDraft } from '@/components/transaction-form'
@@ -21,8 +21,10 @@ import {
   STATS_MODES,
   STATS_MODE_LABEL,
   STATS_MODE_NOUN,
+  calculateAverages,
   categoryBreakdown,
   categoryTrend,
+  getLineChartPoints,
   initialStatsState,
   reportingCategoryUid,
   shiftStatsState,
@@ -135,11 +137,22 @@ export function StatistikScreen() {
   )
 
   const totals = useMemo(() => summarize(rangeRows), [rangeRows])
+  const currentTotal = type === 'income' ? totals.income : totals.expense
+
+  const averages = useMemo(
+    () => calculateAverages(currentTotal, rangeRows, type, state, today),
+    [currentTotal, rangeRows, type, state, today],
+  )
+
+  const lineChartPoints = useMemo(
+    () => getLineChartPoints(state.mode === 'yearly' ? all : rangeRows, type, state),
+    [all, rangeRows, type, state],
+  )
+
   const stats = useMemo(
     () => categoryBreakdown(rangeRows, type, categoryMap),
     [rangeRows, type, categoryMap],
   )
-
   const selected = useMemo(
     () => stats.find((stat) => stat.uid === detailUid) ?? null,
     [stats, detailUid],
@@ -154,12 +167,21 @@ export function StatistikScreen() {
         : [],
     [rangeRows, detailUid, type, categoryMap],
   )
+  const categoryLinePoints = useMemo(() => {
+    if (!detailUid) return null
+    return getLineChartPoints(
+      state.mode === 'yearly' ? all : rangeRows,
+      type,
+      state,
+      detailUid,
+      categoryMap,
+    )
+  }, [all, rangeRows, type, state, detailUid, categoryMap])
 
   const detailSubs = useMemo(
     () => (detailUid ? subCategoryBreakdown(detailRows, detailUid, categoryMap) : []),
     [detailRows, detailUid, categoryMap],
   )
-
   const detailTrend = useMemo(() => {
     if (!detailUid) return []
     const rows = all.filter(
@@ -320,6 +342,41 @@ export function StatistikScreen() {
           })}
         </div>
 
+        {/* 1. Metrik Rata-rata Harian & Rata-rata Asli */}
+        <div
+          data-testid="stats-averages-card"
+          className="grid grid-cols-2 gap-2 rounded-2xl border bg-card p-3 shadow-xs"
+        >
+          <div className="flex flex-col gap-0.5 border-r pr-2">
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {t.stats.dailyAverage}
+            </span>
+            <span
+              data-testid="stats-daily-average-value"
+              className="text-sm font-bold tabular-nums text-foreground"
+            >
+              {formatCurrency(averages.dailyAverage, currency)}
+            </span>
+            <span className="text-[10px] text-muted-foreground/80">
+              {averages.elapsedDays} {t.stats.elapsedDaysLabel}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-0.5 pl-2">
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {t.stats.activeAverage}
+            </span>
+            <span
+              data-testid="stats-active-average-value"
+              className="text-sm font-bold tabular-nums text-foreground"
+            >
+              {formatCurrency(averages.activeDayAverage, currency)}
+            </span>
+            <span className="text-[10px] text-muted-foreground/80">
+              {averages.activeDays} {t.stats.activeDaysLabel}
+            </span>
+          </div>
+        </div>
         {loadError ? (
           <TransactionsEmpty
             testId="stats-error"
@@ -334,6 +391,14 @@ export function StatistikScreen() {
           />
         ) : (
           <>
+            {/* 1. Grafik Garis (Line Chart) — tepat di bawah metrik rata-rata & tepat di atas grafik donat */}
+            <StatistikLineChart
+              points={lineChartPoints}
+              currency={currency}
+              mode={state.mode}
+            />
+
+            {/* 2. Grafik Donat Proporsi */}
             <CategoryBarChart stats={stats} />
 
             <div className="overflow-hidden rounded-2xl border bg-card">
@@ -461,6 +526,8 @@ export function StatistikScreen() {
         rows={detailRows}
         subStats={detailSubs}
         trend={detailTrend}
+        linePoints={categoryLinePoints}
+        mode={state.mode}
         rangeLabel={range.label}
         modeNoun={STATS_MODE_NOUN[state.mode]}
         lookups={lookups}
