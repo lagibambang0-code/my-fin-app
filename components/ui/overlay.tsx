@@ -62,6 +62,8 @@ export function Overlay({
         className={cn(
           align === 'bottom'
             ? 'w-full max-w-full md:max-w-md cursor-default'
+            : align === 'center'
+            ? 'flex w-full items-center justify-center cursor-default'
             : 'w-full cursor-default',
           className,
         )}
@@ -122,9 +124,9 @@ export function FullScreenSheet({
           role="dialog"
           aria-modal="true"
           className={cn(
-            'relative mx-auto flex h-[93dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border-t border-border/60 bg-background/85 shadow-2xl backdrop-blur-2xl',
+            'relative mx-auto flex h-[93dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] bg-card shadow-2xl',
             'animate-in fade-in slide-in-from-bottom-8 duration-200 ease-out motion-reduce:animate-none',
-            'md:mb-8 md:h-[calc(100dvh-4rem)] md:max-w-3xl md:rounded-[2rem] md:border lg:max-w-5xl',
+            'md:mb-8 md:h-[calc(100dvh-4rem)] md:max-w-3xl md:rounded-[2rem] lg:max-w-5xl',
             className,
           )}
         >

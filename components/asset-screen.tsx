@@ -119,6 +119,14 @@ export function AssetScreen() {
 
   useEffect(() => {
     load()
+
+    const onCurrencyChanged = (e: Event) => {
+      const cur = (e as CustomEvent<Currency>).detail
+      if (cur) setMainCurrency(cur)
+      void load()
+    }
+    window.addEventListener('dompetku:currency-changed', onCurrencyChanged)
+    return () => window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
   }, [load])
 
   const currencyFor = (asset: Asset) => currencyMap[asset.currencyUid] ?? mainCurrency

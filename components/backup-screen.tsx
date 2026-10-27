@@ -559,8 +559,14 @@ export function BackupScreen() {
             toast.success(t.backup.resetSuccess)
           } else if (mode === 'all') {
             await db.delete()
+            try {
+              localStorage.removeItem('dompetku:onboarded')
+              localStorage.removeItem('dompetku:language')
+              localStorage.removeItem('dompetku:mode')
+              localStorage.removeItem('dompetku:palette')
+            } catch {}
             await initDB()
-            window.location.href = '/transaksi'
+            window.location.href = '/transactions'
           }
         }}
         onCancel={() => setConfirmReset(null)}

@@ -114,6 +114,14 @@ export function TransaksiScreen() {
 
   useEffect(() => {
     load()
+
+    const onCurrencyChanged = (e: Event) => {
+      const cur = (e as CustomEvent<Currency>).detail
+      if (cur) setCurrency(cur)
+      void load()
+    }
+    window.addEventListener('dompetku:currency-changed', onCurrencyChanged)
+    return () => window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
   }, [load])
 
   const lookups: Lookups = useMemo(

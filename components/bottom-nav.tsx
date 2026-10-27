@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   ChartPie,
   Ellipsis,
+  TrendingUp,
   Wallet,
   type LucideIcon,
 } from 'lucide-react'
@@ -30,6 +31,7 @@ export function BottomNav() {
   const navItems = [
     { href: '/transactions', label: t.nav.transaction, icon: ArrowLeftRight },
     { href: '/stats', label: t.nav.stats, icon: ChartPie },
+    { href: '/investments', label: t.nav.investments, icon: TrendingUp },
     { href: '/accounts', label: t.nav.asset, icon: Wallet },
     { href: '/more', label: t.nav.more, icon: Ellipsis },
   ]
@@ -83,7 +85,7 @@ export function BottomNav() {
           'shadow-[0_-8px_24px_-10px_oklch(0_0_0/_0.05)] md:shadow-none',
         )}
       >
-        <ul className="mx-auto grid max-w-lg grid-cols-4 gap-1">
+        <ul className="mx-auto grid max-w-lg grid-cols-5 gap-1">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`)
             return (

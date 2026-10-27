@@ -330,6 +330,30 @@ export type TxTag = {
   syncVersion: number
 }
 
+export type InvestmentAsset = {
+  id?: number
+  uid: string
+  name: string
+  linkedAssetUid?: string | null
+  currencyUid: string
+  notes?: string
+  createdAt: number
+  isDel: number
+  utime: number
+}
+
+export type InvestmentRecord = {
+  id?: number
+  uid: string
+  investmentUid: string
+  date: string
+  time: string
+  amount: number
+  note?: string
+  createdAt: number
+  isDel: number
+  utime: number
+}
 
 export class DompetkuDB extends Dexie {
   currencies!: Table<Currency, number>
@@ -345,7 +369,8 @@ export class DompetkuDB extends Dexie {
   memos!: Table<Memo, number>
   tags!: Table<Tag, number>
   txTags!: Table<TxTag, number>
-
+  investments!: Table<InvestmentAsset, number>
+  investmentRecords!: Table<InvestmentRecord, number>
 
   constructor() {
     super('DompetkuDB')
@@ -497,6 +522,25 @@ export class DompetkuDB extends Dexie {
       memos: 'id++, uid, isDel, pinned, memoDate',
       tags: 'id++, uid, isDel, orderSeq',
       txTags: 'id++, uid, txUid, tagUid, isDel',
+    })
+
+    // v10 — Investasi / Track Investasi (INVESTMENTS & INVESTMENT_RECORDS)
+    this.version(10).stores({
+      currencies: 'id++, uid, ISO, IS_MAIN_CURRENCY',
+      settings: 'id++, uid, dataTypeKey',
+      categories: 'id++, uid, TYPE, STATUS, pUid',
+      assetGroups: 'id++, uid, TYPE, ORDERSEQ, ACC_GROUP_NAME, IS_DEL',
+      assets: 'id++, uid, groupUid, currencyUid, IS_DEL, IS_SHOW',
+      transactions:
+        'id++, uid, DO_TYPE, ZDATE, ctgUid, assetUid, IS_DEL, UTIME, MARK, RECUR_UID',
+      photos: 'id++, uid, txUid, IS_DEL',
+      budgets: 'id++, uid, targetUid, IS_TOTAL, IS_DEL, ORDER_SEQ',
+      budgetAmounts: 'id++, uid, budgetUid, BUDGET_PERIOD, IS_DEL',
+      repeats: 'id++, uid, NEXT_DATE, IS_DEL, REPEAT_TYPE, ORIGIN_TX_UID',
+      tags: 'id++, uid, isDel, orderSeq',
+      txTags: 'id++, uid, txUid, tagUid, isDel',
+      investments: 'id++, uid, isDel, createdAt',
+      investmentRecords: 'id++, uid, investmentUid, date, isDel',
     })
   }
 }
@@ -1410,8 +1454,11 @@ export async function setMainCurrency(uid: string): Promise<void> {
     }
   }
   await setSetting('main_currency', uid)
+  if (typeof window !== 'undefined') {
+    const updated = target ?? all.find((c) => c.uid === uid)
+    window.dispatchEvent(new CustomEvent('dompetku:currency-changed', { detail: updated }))
+  }
 }
-
 export async function getCurrencyByUid(uid: string): Promise<Currency | undefined> {
   return db.currencies.where('uid').equals(uid).first()
 }
@@ -2025,4 +2072,110 @@ export async function materializeDueRepeats(today: string = todayIso()): Promise
   }
 
   return created
+}
+
+// ---------------------------------------------------------------------------
+// Investment helpers — Track Investasi
+// ---------------------------------------------------------------------------
+
+export async function getInvestments(): Promise<InvestmentAsset[]> {
+  const rows = await db.investments.where('isDel').equals(0).toArray()
+  return rows.sort((a, b) => b.createdAt - a.createdAt)
+}
+
+export async function getInvestmentByUid(uid: string): Promise<InvestmentAsset | undefined> {
+  const rows = await db.investments.where('uid').equals(uid).toArray()
+  return rows.find((r) => r.isDel === 0)
+}
+
+export async function createInvestment(input: {
+  name: string
+  linkedAssetUid?: string | null
+  currencyUid?: string
+  notes?: string
+}): Promise<number> {
+  const now = Date.now()
+  return db.investments.add({
+    uid: genUid('inv'),
+    name: input.name.trim(),
+    linkedAssetUid: input.linkedAssetUid ?? null,
+    currencyUid: input.currencyUid ?? 'IDR_IDR',
+    notes: input.notes?.trim() || undefined,
+    createdAt: now,
+    isDel: 0,
+    utime: now,
+  })
+}
+
+export async function updateInvestment(
+  uid: string,
+  patch: Partial<InvestmentAsset>,
+): Promise<void> {
+  const row = await db.investments.where('uid').equals(uid).first()
+  if (row?.id != null) {
+    await db.investments.update(row.id, { ...patch, utime: Date.now() })
+  }
+}
+
+export async function softDeleteInvestment(uid: string): Promise<void> {
+  const row = await db.investments.where('uid').equals(uid).first()
+  if (row?.id != null) {
+    await db.investments.update(row.id, { isDel: 1, utime: Date.now() })
+    const records = await db.investmentRecords.where('investmentUid').equals(uid).toArray()
+    await Promise.all(
+      records.map((r) => db.investmentRecords.update(r.id!, { isDel: 1, utime: Date.now() })),
+    )
+  }
+}
+
+export async function getInvestmentRecords(
+  investmentUid: string,
+): Promise<InvestmentRecord[]> {
+  const rows = await db.investmentRecords
+    .where('investmentUid')
+    .equals(investmentUid)
+    .toArray()
+  const active = rows.filter((r) => r.isDel === 0)
+  return active.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
+    return a.time.localeCompare(b.time)
+  })
+}
+
+export async function createInvestmentRecord(input: {
+  investmentUid: string
+  date: string
+  time: string
+  amount: number
+  note?: string
+}): Promise<number> {
+  const now = Date.now()
+  return db.investmentRecords.add({
+    uid: genUid('invrec'),
+    investmentUid: input.investmentUid,
+    date: input.date,
+    time: input.time,
+    amount: input.amount,
+    note: input.note?.trim() || undefined,
+    createdAt: now,
+    isDel: 0,
+    utime: now,
+  })
+}
+
+export async function updateInvestmentRecord(
+  uid: string,
+  patch: Partial<InvestmentRecord>,
+): Promise<void> {
+  const row = await db.investmentRecords.where('uid').equals(uid).first()
+  if (row?.id != null) {
+    await db.investmentRecords.update(row.id, { ...patch, utime: Date.now() })
+  }
+}
+
+export async function softDeleteInvestmentRecord(uid: string): Promise<void> {
+  const row = await db.investmentRecords.where('uid').equals(uid).first()
+  if (row?.id != null) {
+    await db.investmentRecords.update(row.id, { isDel: 1, utime: Date.now() })
+  }
 }

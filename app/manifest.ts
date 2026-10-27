@@ -6,6 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'Dompetku',
     description:
       'Record transactions, track statistics, and manage your financial accounts with ease.',
+    scope: '/',
     start_url: '/transactions',
     display: 'standalone',
     background_color: '#ffffff',

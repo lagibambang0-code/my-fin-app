@@ -5,8 +5,11 @@ import { Toaster } from 'sonner'
 import './globals.css'
 import { DbInitializer } from '@/components/db-initializer'
 import { LanguageProvider } from '@/components/language-provider'
+import { CurrencyProvider } from '@/components/currency-provider'
+import { PwaRegister } from '@/components/pwa-register'
+import { OnboardingModal } from '@/components/onboarding-modal'
+
 const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
   variable: '--font-jakarta',
   display: 'swap',
 })
@@ -56,8 +59,14 @@ export default function RootLayout({
     <html lang="en" className={jakarta.variable} suppressHydrationWarning>
       <body className="antialiased">
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          <CurrencyProvider>
+            {children}
+            <OnboardingModal />
+          </CurrencyProvider>
+        </LanguageProvider>
         <DbInitializer />
+        <PwaRegister />
         <Toaster position="top-center" richColors closeButton />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
