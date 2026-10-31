@@ -1,10 +1,12 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { TrendingDown, TrendingUp } from 'lucide-react'
-import { formatCurrency, formatShortDate } from '@/lib/format'
+import { formatCurrency, formatPercent3, formatShortDate } from '@/lib/format'
 import type { Currency, InvestmentRecord } from '@/lib/db'
 import { cn } from '@/lib/utils'
+
+export type ChartTimeRange = '7D' | '30H' | 'ALL'
 
 export type InvestmentChartPoint = {
   key: string
@@ -15,7 +17,6 @@ export type InvestmentChartPoint = {
   diffPercent: number
   label: string
 }
-
 export function InvestmentChart({
   records,
   currency,
@@ -28,8 +29,22 @@ export function InvestmentChart({
   testId?: string
 }) {
   const gradientId = useId()
+  const [rangeFilter, setRangeFilter] = useState<ChartTimeRange>('7D')
   const [activePoint, setActivePoint] = useState<InvestmentChartPoint | null>(null)
 
+  // Filter records berdasarkan rentang waktu: 7D (default), 30H, atau ALL
+  const filteredRecords = useMemo(() => {
+    if (rangeFilter === 'ALL' || records.length <= 1) return records
+
+    const now = new Date()
+    const days = rangeFilter === '7D' ? 7 : 30
+    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+    const cutoffIso = cutoff.toISOString().slice(0, 10)
+
+    const matched = records.filter((r) => r.date >= cutoffIso)
+    // Jika dalam rentang waktu < 2 data, fallback ke minimal 2 data terakhir agar grafik tetap tampil
+    return matched.length >= 2 ? matched : records.slice(-Math.min(records.length, 5))
+  }, [records, rangeFilter])
   if (records.length < 2) {
     return (
       <div
@@ -41,9 +56,9 @@ export function InvestmentChart({
     )
   }
 
-  // Hitung poin dan selisih
-  const points: InvestmentChartPoint[] = records.map((rec, index) => {
-    const prevAmount = index > 0 ? records[index - 1].amount : rec.amount
+  // Hitung poin dan selisih berdasarkan data terfilter
+  const points: InvestmentChartPoint[] = filteredRecords.map((rec, index) => {
+    const prevAmount = index > 0 ? filteredRecords[index - 1].amount : rec.amount
     const diff = rec.amount - prevAmount
     const diffPercent = prevAmount > 0 ? (diff / prevAmount) * 100 : 0
     return {
@@ -57,12 +72,12 @@ export function InvestmentChart({
     }
   })
 
-  const firstAmount = records[0].amount
-  const lastAmount = records[records.length - 1].amount
+  const firstAmount = filteredRecords[0].amount
+  const lastAmount = filteredRecords[filteredRecords.length - 1].amount
   const isUp = lastAmount >= firstAmount
   const chartColor = isUp ? '#10b981' : '#f43f5e' // emerald-500 : rose-500
 
-  const amounts = records.map((r) => r.amount)
+  const amounts = filteredRecords.map((r) => r.amount)
   const min = Math.min(...amounts)
   const max = Math.max(...amounts)
   const range = max - min || 1
@@ -97,46 +112,72 @@ export function InvestmentChart({
       aria-label="Grafik pergerakan investasi"
       className="rounded-2xl border bg-card p-4 shadow-xs transition-all"
     >
-      {/* Header Info Perubahan */}
-      <div className="flex items-center justify-between pb-3 border-b mb-3">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              'flex size-7 items-center justify-center rounded-lg',
-              isUp ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500',
-            )}
-          >
-            {isUp ? (
-              <TrendingUp className="size-4" aria-hidden="true" />
-            ) : (
-              <TrendingDown className="size-4" aria-hidden="true" />
-            )}
-          </span>
-          <div>
-            <p className="text-[11px] text-muted-foreground">
-              {displayedPoint ? `${displayedPoint.date} · ${displayedPoint.time}` : 'Pergerakan nilai'}
-            </p>
-            <p className="text-sm font-bold tabular-nums text-foreground">
-              {formatCurrency(displayedPoint?.amount ?? lastAmount, currency)}
-            </p>
+      {/* Header Info Perubahan & Tombol Filter Rentang Waktu */}
+      <div className="flex flex-col gap-2 pb-3 border-b mb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                'flex size-7 items-center justify-center rounded-lg',
+                isUp ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500',
+              )}
+            >
+              {isUp ? (
+                <TrendingUp className="size-4" aria-hidden="true" />
+              ) : (
+                <TrendingDown className="size-4" aria-hidden="true" />
+              )}
+            </span>
+            <div>
+              <p className="text-[11px] text-muted-foreground">
+                {displayedPoint ? `${displayedPoint.date} · ${displayedPoint.time}` : 'Pergerakan nilai'}
+              </p>
+              <p className="text-sm font-bold tabular-nums text-foreground">
+                {formatCurrency(displayedPoint?.amount ?? lastAmount, currency)}
+              </p>
+            </div>
+          </div>
+
+          {/* Tombol Filter Rentang Waktu: 7D (default), 30H, ALL */}
+          <div className="flex items-center rounded-lg border bg-muted/40 p-0.5 text-xs font-semibold" data-testid="chart-range-filter">
+            {(['7D', '30H', 'ALL'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                data-testid={`chart-range-${r}`}
+                onClick={() => {
+                  setRangeFilter(r)
+                  setActivePoint(null)
+                }}
+                className={cn(
+                  'px-2 py-0.5 rounded-md transition-all',
+                  rangeFilter === r
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {r}
+              </button>
+            ))}
           </div>
         </div>
 
         {displayedPoint && (
-          <div className="text-right">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Perubahan titik ini:</span>
             <span
               className={cn(
-                'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
+                'font-semibold tabular-nums',
                 displayedPoint.diff > 0
-                  ? 'bg-emerald-500/10 text-emerald-500'
+                  ? 'text-emerald-500'
                   : displayedPoint.diff < 0
-                  ? 'bg-rose-500/10 text-rose-500'
-                  : 'bg-muted text-muted-foreground',
+                  ? 'text-rose-500'
+                  : 'text-muted-foreground',
               )}
             >
               {displayedPoint.diff > 0 ? '+' : ''}
               {formatCurrency(displayedPoint.diff, currency)} ({displayedPoint.diff > 0 ? '+' : ''}
-              {displayedPoint.diffPercent.toFixed(2)}%)
+              {formatPercent3(displayedPoint.diffPercent)})
             </span>
           </div>
         )}

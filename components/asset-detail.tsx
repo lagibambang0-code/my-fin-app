@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, ChevronLeft, Pencil } from 'lucide-react'
+import { BarChart3, ChevronLeft, Pencil, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { TransactionForm } from '@/components/transaction-form'
+import { softDeleteTransaction, sortTransactionsDesc } from '@/lib/db'
 import { FullScreenSheet } from '@/components/ui/overlay'
 import { MonthNavigator, type MonthValue } from '@/components/month-navigator'
 import { useTranslation } from '@/components/language-provider'
@@ -64,8 +66,10 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
   const [currency, setCurrency] = useState<Currency | null>(null)
   const [rows, setRows] = useState<Transaction[]>([])
   const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map())
+  const [formOpen, setFormOpen] = useState(false)
+  const [formKey, setFormKey] = useState(0)
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
-
   const handleSwipeDown = (event: React.PointerEvent<HTMLElement>) => {
     swipeStart.current = { x: event.clientX, y: event.clientY }
   }
@@ -124,10 +128,12 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
 
   if (!asset) return null
 
-  const periodRows = rows.filter((tx) => {
-    const date = fromIso(tx.ZDATE)
-    return date >= range.start && date <= range.end
-  })
+  const periodRows = rows
+    .filter((tx) => {
+      const date = fromIso(tx.ZDATE)
+      return date >= range.start && date <= range.end
+    })
+    .sort(sortTransactionsDesc)
 
   let deposit = 0
   let withdrawal = 0
@@ -181,6 +187,19 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
           onClick={() => onEdit(asset)}
         >
           <Pencil className="size-4.5" />
+        </Button>
+        <Button
+          variant="default"
+          size="icon-sm"
+          aria-label="Catat transaksi untuk aset ini"
+          data-testid="asset-detail-add-tx"
+          onClick={() => {
+            setEditingTx(null)
+            setFormKey((k) => k + 1)
+            setFormOpen(true)
+          }}
+        >
+          <Plus className="size-4.5" />
         </Button>
       </header>
 
@@ -267,7 +286,12 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
                   <li
                     key={tx.uid}
                     data-testid={`detail-tx-${tx.uid}`}
-                    className="flex items-center justify-between gap-3 border-t px-3 py-2.5 first:border-t-0"
+                    onClick={() => {
+                      setEditingTx(tx)
+                      setFormKey((k) => k + 1)
+                      setFormOpen(true)
+                    }}
+                    className="flex cursor-pointer items-center justify-between gap-3 border-t px-3 py-2.5 transition-colors first:border-t-0 hover:bg-secondary"
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm">{title}</span>
@@ -293,6 +317,42 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
           )}
         </div>
       </div>
+
+      {formOpen && (
+        <TransactionForm
+          key={formKey}
+          open
+          transaction={editingTx}
+          initial={{ assetUid: asset.uid }}
+          onClose={() => {
+            setFormOpen(false)
+            setEditingTx(null)
+          }}
+          onSaved={async () => {
+            setFormOpen(false)
+            setEditingTx(null)
+            const [touching, cats] = await Promise.all([
+              getTransactionsTouchingAsset(asset.uid),
+              getAllCategories(),
+            ])
+            setRows(touching)
+            setCategoryNames(new Map(cats.map((c) => [c.uid, c.NAME])))
+          }}
+          onDeleted={async () => {
+            if (editingTx?.id) await softDeleteTransaction(editingTx.id)
+            setFormOpen(false)
+            setEditingTx(null)
+            const [touching, cats] = await Promise.all([
+              getTransactionsTouchingAsset(asset.uid),
+              getAllCategories(),
+            ])
+            setRows(touching)
+            setCategoryNames(new Map(cats.map((c) => [c.uid, c.NAME])))
+          }}
+          onOpenBookmarks={() => {}}
+          onCopy={() => {}}
+        />
+      )}
     </FullScreenSheet>
   )
 }

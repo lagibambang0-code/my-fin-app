@@ -1,6 +1,7 @@
 'use client'
 
-import { ArrowLeftRight, ReceiptText, Star, X } from 'lucide-react'
+import { useRef } from 'react'
+import { ArrowLeftRight, Check, ReceiptText, Star, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
@@ -40,16 +41,39 @@ export function TransactionRow({
   onOpen,
   leading,
   showDate,
+  bulkMode,
+  selected,
+  onToggleSelect,
+  onLongPress,
 }: {
   tx: Transaction
   lookups: Lookups
   onOpen: (tx: Transaction) => void
   leading?: React.ReactNode
   showDate?: boolean
+  bulkMode?: boolean
+  selected?: boolean
+  onToggleSelect?: (tx: Transaction) => void
+  onLongPress?: (tx: Transaction) => void
 }) {
   const amount = amountOf(tx)
   const isIncome = tx.DO_TYPE === 'income'
   const isTransfer = tx.DO_TYPE === 'transfer'
+  const pressTimer = useRef<number | null>(null)
+
+  const handlePointerDown = () => {
+    if (!onLongPress) return
+    pressTimer.current = window.setTimeout(() => {
+      pressTimer.current = null
+      onLongPress(tx)
+    }, 500)
+  }
+  const handlePointerUp = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current)
+      pressTimer.current = null
+    }
+  }
 
   return (
     <div className="flex items-stretch border-t first:border-t-0">
@@ -57,9 +81,22 @@ export function TransactionRow({
       <button
         type="button"
         data-testid={`tx-row-${tx.uid}`}
-        onClick={() => onOpen(tx)}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onClick={() => bulkMode && onToggleSelect ? onToggleSelect(tx) : onOpen(tx)}
         className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
+        {bulkMode && (
+          <span className={cn(
+            'flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+            selected
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-muted-foreground/40 bg-background',
+          )}>
+            {selected && <Check className="size-3" aria-hidden="true" />}
+          </span>
+        )}
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             {isTransfer && (
@@ -139,12 +176,20 @@ export function DailyTransactionList({
   onOpen,
   filterActive,
   onClearFilter,
+  bulkMode,
+  selectedUids,
+  onToggleSelect,
+  onLongPress,
 }: {
   transactions: Transaction[]
   lookups: Lookups
   onOpen: (tx: Transaction) => void
   filterActive?: boolean
   onClearFilter?: () => void
+  bulkMode?: boolean
+  selectedUids?: Set<string>
+  onToggleSelect?: (tx: Transaction) => void
+  onLongPress?: (tx: Transaction) => void
 }) {
   if (transactions.length === 0) {
     return (
@@ -188,7 +233,16 @@ export function DailyTransactionList({
             </div>
             <div className="overflow-hidden rounded-xl border bg-card">
               {group.items.map((tx) => (
-                <TransactionRow key={tx.uid} tx={tx} lookups={lookups} onOpen={onOpen} />
+                <TransactionRow
+                  key={tx.uid}
+                  tx={tx}
+                  lookups={lookups}
+                  onOpen={onOpen}
+                  bulkMode={bulkMode}
+                  selected={selectedUids?.has(tx.uid)}
+                  onToggleSelect={onToggleSelect}
+                  onLongPress={onLongPress}
+                />
               ))}
             </div>
           </section>

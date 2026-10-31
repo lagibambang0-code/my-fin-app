@@ -24,6 +24,17 @@ export function formatCurrency(value: number, currency?: CurrencyFormat | null):
   return SYMBOL_POSITION === 'back' ? `${formatted} ${SYMBOL}` : `${SYMBOL} ${formatted}`
 }
 
+/**
+ * Format percentage up to 3 decimal places without rounding (truncated).
+ * Example: 0.015% -> "0.015%", 0.020% -> "0.02%", 10.5% -> "10.5%", 10% -> "10%"
+ */
+export function formatPercent3(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return '0%'
+  const fixed = value.toFixed(3)
+  const trimmed = fixed.replace(/(\.\d*?[1-9])0+$|\.0*$/, '$1')
+  return `${trimmed}%`
+}
+
 /** Format just the number (no symbol), honouring the currency decimals. */
 export function formatAmount(value: number, currency?: CurrencyFormat | null): string {
   return formatCurrency(value, currency).replace(/^[^\d-]*\s*/, '').replace(/\s*[^\d.,\s-]*$/, '')

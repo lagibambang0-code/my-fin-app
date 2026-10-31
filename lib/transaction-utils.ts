@@ -80,7 +80,16 @@ export function groupByDate(rows: Transaction[]): DayGroup[] {
     else if (t.DO_TYPE === 'expense') group.expense += amount
     group.items.push(t)
   }
-  return [...map.values()].sort((a, b) => (a.date < b.date ? 1 : -1))
+  const result = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : -1))
+  for (const group of result) {
+    group.items.sort((a, b) => {
+      const timeA = a.wtime || ''
+      const timeB = b.wtime || ''
+      if (timeA !== timeB) return timeA < timeB ? 1 : -1
+      return (b.UTIME || 0) - (a.UTIME || 0)
+    })
+  }
+  return result
 }
 
 /** Total per date, used by the Kalender cells. */

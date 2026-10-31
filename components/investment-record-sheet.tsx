@@ -46,7 +46,10 @@ export function InvestmentRecordSheet({
     const now = new Date()
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   })
+  const [entryMode, setEntryMode] = useState<'deposit' | 'pnl'>('deposit')
   const [amountText, setAmountText] = useState('')
+  const [depositText, setDepositText] = useState('')
+  const [pnlInputText, setPnlInputText] = useState('')
   const [note, setNote] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -61,21 +64,28 @@ export function InvestmentRecordSheet({
         `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
     )
     setAmountText(record ? String(record.amount) : '')
+    setDepositText(record?.deposit != null && record.deposit !== 0 ? String(record.deposit) : '')
+    setPnlInputText('')
+    setEntryMode('deposit')
     setNote(record?.note ?? '')
     setError(null)
   }, [open, record])
-
   const parsed = parseAmount(amountText)
-  const hasValidAmount = Number.isFinite(parsed) && parsed > 0
+  const parsedDeposit = depositText ? parseAmount(depositText) : 0
+  const parsedPnl = parseAmount(pnlInputText)
 
-  // Hitung selisih langsung terhadap entri sebelumnya
+  // Dalam mode PnL: Nilai Sekarang otomatis dihitung dari previousAmount + parsedPnl
+  const effectiveAmount = entryMode === 'pnl'
+    ? (previousAmount ?? 0) + parsedPnl
+    : parsed
+  const hasValidAmount = Number.isFinite(effectiveAmount) && effectiveAmount > 0
+
   let diff = 0
   let diffPercent = 0
   if (hasValidAmount && previousAmount != null && previousAmount > 0) {
-    diff = parsed - previousAmount
+    diff = effectiveAmount - previousAmount
     diffPercent = (diff / previousAmount) * 100
   }
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!hasValidAmount) {
@@ -85,23 +95,19 @@ export function InvestmentRecordSheet({
 
     setSaving(true)
     try {
-      if (record?.uid) {
-        await updateInvestmentRecord(record.uid, {
-          date,
-          time,
-          amount: parsed,
-          note: note.trim() || undefined,
-        })
-      } else {
-        await createInvestmentRecord({
-          investmentUid,
-          date,
-          time,
-          amount: parsed,
-          note: note.trim() || undefined,
-        })
+      const payload = {
+        investmentUid,
+        date,
+        time,
+        amount: effectiveAmount,
+        deposit: entryMode === 'deposit' ? (Number.isFinite(parsedDeposit) ? parsedDeposit : 0) : 0,
+        note: note.trim() || undefined,
       }
-      onSaved()
+      if (record?.uid) {
+        await updateInvestmentRecord(record.uid, payload)
+      } else {
+        await createInvestmentRecord(payload)
+      }
       onClose()
     } catch {
       setError('Gagal menyimpan catatan nilai. Coba lagi.')
@@ -186,32 +192,117 @@ export function InvestmentRecordSheet({
             </div>
           </div>
 
-          {/* Nominal Nilai */}
-          <div>
-            <label htmlFor="inv-rec-amount" className="mb-1 block text-xs font-semibold text-muted-foreground uppercase">
-              {t.investments.recordAmount}
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="flex h-11 shrink-0 items-center justify-center rounded-xl border bg-muted/40 px-3 text-sm font-semibold tabular-nums text-muted-foreground">
-                {currency?.SYMBOL ?? 'Rp'}
-              </span>
-              <input
-                id="inv-rec-amount"
-                type="text"
-                inputMode="decimal"
-                required
-                autoFocus
-                placeholder="10000"
-                value={amountText ? formatTypingAmount(amountText, currency) : ''}
-                onChange={(e) => setAmountText(normalizeAmountInput(e.target.value, currency))}
-                data-testid="inv-record-amount-input"
-                className={cn(inputClass, 'h-11 text-base font-bold tabular-nums')}
-              />
-            </div>
+          {/* Mode Toggle: Nilai Sekarang / Deposit vs Tambah Nilai Melalui PnL */}
+          <div className="flex rounded-xl border bg-muted/40 p-1 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setEntryMode('deposit')}
+              className={cn(
+                'flex-1 rounded-lg py-1.5 transition-all text-center',
+                entryMode === 'deposit'
+                  ? 'bg-background text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Setor / Nilai Aset
+            </button>
+            <button
+              type="button"
+              onClick={() => setEntryMode('pnl')}
+              className={cn(
+                'flex-1 rounded-lg py-1.5 transition-all text-center',
+                entryMode === 'pnl'
+                  ? 'bg-background text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Input PnL Langsung
+            </button>
+          </div>
 
-            {/* Pratinjau Selisih Otomatis */}
-            {hasValidAmount && previousAmount != null && previousAmount > 0 && (
-              <div className="mt-2.5 flex items-center justify-between rounded-xl border bg-card p-3 text-xs">
+          {entryMode === 'deposit' ? (
+            <>
+              {/* Nominal Nilai Sekarang */}
+              <div>
+                <label htmlFor="inv-rec-amount" className="mb-1 block text-xs font-semibold text-muted-foreground uppercase">
+                  {t.investments.recordAmount}
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-11 shrink-0 items-center justify-center rounded-xl border bg-muted/40 px-3 text-sm font-semibold tabular-nums text-muted-foreground">
+                    {currency?.SYMBOL ?? 'Rp'}
+                  </span>
+                  <input
+                    id="inv-rec-amount"
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    autoFocus
+                    placeholder="10000"
+                    value={amountText ? formatTypingAmount(amountText, currency) : ''}
+                    onChange={(e) => setAmountText(normalizeAmountInput(e.target.value, currency))}
+                    data-testid="inv-record-amount-input"
+                    className={cn(inputClass, 'h-11 text-base font-bold tabular-nums')}
+                  />
+                </div>
+              </div>
+
+              {/* Nominal Deposit Tambahan / Modal Baru */}
+              <div>
+                <label htmlFor="inv-rec-deposit" className="mb-1 block text-xs font-semibold text-muted-foreground uppercase">
+                  {t.investments.depositFieldLabel}
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-11 shrink-0 items-center justify-center rounded-xl border bg-muted/40 px-3 text-sm font-semibold tabular-nums text-muted-foreground">
+                    {currency?.SYMBOL ?? 'Rp'}
+                  </span>
+                  <input
+                    id="inv-rec-deposit"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0 (Jika tidak ada top-up)"
+                    value={depositText ? formatTypingAmount(depositText, currency) : ''}
+                    onChange={(e) => setDepositText(normalizeAmountInput(e.target.value, currency))}
+                    data-testid="inv-record-deposit-input"
+                    className={cn(inputClass, 'h-11 text-base font-bold tabular-nums')}
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Isi jika pada tanggal ini Anda melakukan setor/top-up modal baru.
+                </p>
+              </div>
+            </>
+          ) : (
+            /* Input PnL Langsung */
+            <div>
+              <label htmlFor="inv-rec-pnl" className="mb-1 block text-xs font-semibold text-muted-foreground uppercase">
+                Nominal Keuntungan / Kerugian (+/-)
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="flex h-11 shrink-0 items-center justify-center rounded-xl border bg-muted/40 px-3 text-sm font-semibold tabular-nums text-muted-foreground">
+                  {currency?.SYMBOL ?? 'Rp'}
+                </span>
+                <input
+                  id="inv-rec-pnl"
+                  type="text"
+                  inputMode="decimal"
+                  required
+                  autoFocus
+                  placeholder="Contoh: 2000 atau -500"
+                  value={pnlInputText ? formatTypingAmount(pnlInputText, currency) : ''}
+                  onChange={(e) => setPnlInputText(normalizeAmountInput(e.target.value, currency))}
+                  data-testid="inv-record-pnl-input"
+                  className={cn(inputClass, 'h-11 text-base font-bold tabular-nums')}
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Nilai aset baru otomatis dihitung: {formatCurrency(previousAmount ?? 0, currency)} + ({formatCurrency(parsedPnl || 0, currency)}) = <strong className="text-foreground">{formatCurrency(effectiveAmount, currency)}</strong>
+              </p>
+            </div>
+          )}
+          {/* Pratinjau Selisih Otomatis */}
+          {hasValidAmount && previousAmount != null && previousAmount > 0 && (
+            <div className="rounded-xl border bg-card p-3 text-xs">
+              <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Perubahan dari nilai sebelumnya:</span>
                 <span
                   className={cn(
@@ -230,11 +321,11 @@ export function InvestmentRecordSheet({
                   ) : null}
                   {diff > 0 ? '+' : ''}
                   {formatCurrency(diff, currency)} ({diff > 0 ? '+' : ''}
-                  {diffPercent.toFixed(2)}%)
+                  {diffPercent.toFixed(3).replace(/(\.\d*?[1-9])0+$|\.0*$/, '$1')}%)
                 </span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Catatan Tambahan */}
           <div>

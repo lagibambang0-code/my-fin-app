@@ -22,7 +22,7 @@ import {
   getInvestmentRecords,
   getMainCurrency,
 } from '@/lib/db'
-import { formatCurrency, formatShortDate } from '@/lib/format'
+import { formatCurrency, formatPercent3, formatShortDate } from '@/lib/format'
 import { InvestmentChart } from '@/components/investment-chart'
 import { InvestmentFormSheet } from '@/components/investment-form-sheet'
 import { InvestmentRecordSheet } from '@/components/investment-record-sheet'
@@ -73,26 +73,28 @@ export function InvestmentDetailScreen({
 
   if (!open || !investment) return null
 
-  // Hitung metrik nilai sekarang, perubahan terbaru, dan total return
+  // Hitung metrik deposit, nilai sekarang, dan PnL
   const count = records.length
   const currentRecord = count > 0 ? records[count - 1] : null
-  const firstRecord = count > 0 ? records[0] : null
   const prevRecord = count > 1 ? records[count - 2] : null
 
   const currentValue = currentRecord?.amount ?? 0
-  const initialValue = firstRecord?.amount ?? 0
-  const previousValue = prevRecord?.amount ?? initialValue
+  const previousValue = prevRecord?.amount ?? currentValue
 
-  // Kenaikan/penurunan terbaru
-  const latestDiff = currentRecord ? currentRecord.amount - previousValue : 0
+  // Nilai deposit: jika ada field deposit eksplisit gunakan sum(deposit),
+  // jika tidak ada / bernilai 0 fallback ke firstRecord.amount (deposit awal)
+  const explicitDepositSum = records.reduce((sum, r) => sum + (r.deposit ?? 0), 0)
+  const totalDeposit = explicitDepositSum > 0
+    ? explicitDepositSum
+    : (records.length > 0 ? records[0].amount : 0)
+
+  // PnL murni berdasarkan selisih dari Nilai Deposit ke Nilai Sekarang
+  const pnlAmount = currentValue - totalDeposit
+  const pnlPercent = totalDeposit > 0 ? (pnlAmount / totalDeposit) * 100 : 0
+
+  // Kenaikan/penurunan terbaru dari entri sebelumnya
+  const latestDiff = currentRecord && prevRecord ? currentRecord.amount - previousValue : 0
   const latestPercent = previousValue > 0 ? (latestDiff / previousValue) * 100 : 0
-
-  // Total kenaikan/penurunan kumulatif
-  const totalDiff = currentRecord ? currentRecord.amount - initialValue : 0
-  const totalPercent = initialValue > 0 ? (totalDiff / initialValue) * 100 : 0
-
-  const isUp = latestDiff >= 0
-  const isTotalUp = totalDiff >= 0
 
   return (
     <FullScreenSheet open={open} onClose={onClose} testId="investment-detail-screen">
@@ -139,11 +141,42 @@ export function InvestmentDetailScreen({
       <div className="flex flex-1 flex-col overflow-y-auto px-4 py-4 md:px-10">
         <div className="mx-auto w-full max-w-lg space-y-4">
           {/* Kartu Bagian Tengah: Menampilkan Nominal & Persentase Kenaikan/Penurunan */}
+          {/* Kartu Bagian Atas: Menampilkan Nilai Deposit, Nilai Sekarang, dan PnL */}
           <div
             data-testid="investment-summary-card"
             className="rounded-2xl border bg-card p-5 text-center shadow-xs"
           >
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <div className="grid grid-cols-2 gap-3 pb-3 border-b text-left">
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  {t.investments.totalDeposit}
+                </p>
+                <p data-testid="investment-total-deposit" className="mt-0.5 text-base font-bold tabular-nums text-foreground">
+                  {formatCurrency(totalDeposit, currency)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  {t.investments.pnlLabel}
+                </p>
+                <p
+                  data-testid="investment-pnl-value"
+                  className={cn(
+                    'mt-0.5 text-base font-bold tabular-nums',
+                    pnlAmount > 0
+                      ? 'text-emerald-500'
+                      : pnlAmount < 0
+                      ? 'text-rose-500'
+                      : 'text-muted-foreground',
+                  )}
+                >
+                  {pnlAmount > 0 ? '+' : ''}
+                  {formatCurrency(pnlAmount, currency)}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
               {t.investments.currentValuation}
             </p>
             <p
@@ -153,35 +186,34 @@ export function InvestmentDetailScreen({
               {formatCurrency(currentValue, currency)}
             </p>
 
-            {/* Metrik Kenaikan/Penurunan di Bagian Tengah */}
+            {/* Metrik PnL Keseluruhan dan Perubahan Terbaru */}
             <div className="mt-3 flex items-center justify-center gap-2 border-t pt-3">
               <div
-                data-testid="investment-latest-diff"
+                data-testid="investment-pnl-badge"
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
-                  latestDiff > 0
+                  pnlAmount > 0
                     ? 'bg-emerald-500/10 text-emerald-500'
-                    : latestDiff < 0
+                    : pnlAmount < 0
                     ? 'bg-rose-500/10 text-rose-500'
                     : 'bg-muted text-muted-foreground',
                 )}
               >
-                {latestDiff > 0 ? (
+                {pnlAmount > 0 ? (
                   <TrendingUp className="size-3.5" />
-                ) : latestDiff < 0 ? (
+                ) : pnlAmount < 0 ? (
                   <TrendingDown className="size-3.5" />
                 ) : null}
                 <span>
-                  {latestDiff > 0 ? '+' : ''}
-                  {formatCurrency(latestDiff, currency)} ({latestDiff > 0 ? '+' : ''}
-                  {latestPercent.toFixed(2)}%)
+                  Total PnL: {pnlAmount > 0 ? '+' : ''}
+                  {formatPercent3(pnlPercent)}
                 </span>
               </div>
 
               {count > 1 && (
                 <span className="text-[11px] text-muted-foreground tabular-nums">
-                  Total: {totalDiff > 0 ? '+' : ''}
-                  {totalPercent.toFixed(2)}%
+                  Terakhir: {latestDiff > 0 ? '+' : ''}
+                  {formatPercent3(latestPercent)}
                 </span>
               )}
             </div>
@@ -255,22 +287,28 @@ export function InvestmentDetailScreen({
                         <span className="block font-bold text-sm tabular-nums text-foreground">
                           {formatCurrency(rec.amount, currency)}
                         </span>
-                        {prevAmount != null && (
-                          <span
-                            className={cn(
-                              'inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums',
-                              diffVal > 0
-                                ? 'text-emerald-500'
-                                : diffVal < 0
-                                ? 'text-rose-500'
-                                : 'text-muted-foreground',
-                            )}
-                          >
-                            {diffVal > 0 ? '+' : ''}
-                            {formatCurrency(diffVal, currency)} ({diffVal > 0 ? '+' : ''}
-                            {diffPct.toFixed(2)}%)
-                          </span>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5 text-[11px] tabular-nums">
+                          {rec.deposit != null && rec.deposit > 0 && (
+                            <span className="text-muted-foreground">
+                              Dep: {formatCurrency(rec.deposit, currency)}
+                            </span>
+                          )}
+                          {prevAmount != null && (
+                            <span
+                              className={cn(
+                                'font-semibold',
+                                diffVal > 0
+                                  ? 'text-emerald-500'
+                                  : diffVal < 0
+                                  ? 'text-rose-500'
+                                  : 'text-muted-foreground',
+                              )}
+                            >
+                              {diffVal > 0 ? '+' : ''}
+                              {formatPercent3(diffPct)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </button>
                   )

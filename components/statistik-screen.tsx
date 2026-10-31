@@ -36,7 +36,7 @@ import {
 } from '@/lib/statistics-utils'
 import {
   getAllAssets,
-  getAllCategories,
+  getAllCategoriesForReporting,
   getAllTransactions,
   getMainCurrency,
   getSettingByKey,
@@ -92,7 +92,7 @@ export function StatistikScreen() {
       await initDB()
       const [transactions, categoryList, assetList, main, swipeSetting] = await Promise.all([
         getAllTransactions(),
-        getAllCategories(),
+        getAllCategoriesForReporting(),
         getAllAssets(),
         getMainCurrency(),
         getSettingByKey('swipe_gesture'),

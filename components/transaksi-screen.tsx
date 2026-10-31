@@ -80,6 +80,9 @@ export function TransaksiScreen() {
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [copyDraft, setCopyDraft] = useState<TransactionDraft | null>(null)
 
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
+
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
 
@@ -199,6 +202,34 @@ export function TransaksiScreen() {
     }
     await load()
   }
+  const enterBulkMode = (tx: Transaction) => {
+    setBulkMode(true)
+    setBulkSelected(new Set([tx.uid]))
+  }
+
+  const exitBulkMode = () => {
+    setBulkMode(false)
+    setBulkSelected(new Set())
+  }
+
+  const toggleBulkSelect = (tx: Transaction) => {
+    setBulkSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(tx.uid)) next.delete(tx.uid)
+      else next.add(tx.uid)
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    const toDelete = all.filter((tx) => bulkSelected.has(tx.uid))
+    for (const tx of toDelete) {
+      if (tx.id) await softDeleteTransaction(tx.id)
+    }
+    exitBulkMode()
+    await load()
+  }
+
 
   const handleSwipeDown = (event: React.PointerEvent<HTMLElement>) => {
     swipeStart.current = { x: event.clientX, y: event.clientY }
@@ -353,6 +384,10 @@ export function TransaksiScreen() {
             onOpen={openEdit}
             filterActive={filterActive}
             onClearFilter={() => setFilter({ ...EMPTY_FILTER })}
+            bulkMode={bulkMode}
+            selectedUids={bulkSelected}
+            onToggleSelect={toggleBulkSelect}
+            onLongPress={enterBulkMode}
           />
         ) : view === 'calendar' ? (
           <TransactionCalendar
@@ -377,20 +412,44 @@ export function TransaksiScreen() {
       </section>
 
       {/* FAB — parked just above the bottom navigation */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--nav-offset)+0.75rem)] z-30 mx-auto w-full max-w-md px-4 md:max-w-3xl lg:max-w-5xl md:px-10">
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            size="icon-lg"
-            aria-label="Tambah transaksi"
-            data-testid="trx-fab"
-            onClick={openAdd}
-            className="pointer-events-auto size-14 rounded-full shadow-lg transition-transform duration-200 ease-out-quart hover:scale-[1.03] active:scale-95 [&_svg:not([class*='size-'])]:size-6"
-          >
-            <Plus aria-hidden="true" />
-          </Button>
+      {bulkMode ? (
+        <div className="fixed inset-x-0 bottom-[calc(var(--nav-offset)+0.75rem)] z-30 mx-auto w-full max-w-md px-4 md:max-w-3xl lg:max-w-5xl md:px-10">
+          <div className="flex items-center justify-between rounded-2xl border border-destructive/30 bg-card p-3 shadow-xl backdrop-blur-md">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">
+                {bulkSelected.size} dipilih
+              </span>
+              <Button variant="ghost" size="xs" onClick={exitBulkMode}>
+                Batal
+              </Button>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={bulkSelected.size === 0}
+              data-testid="trx-bulk-delete"
+              onClick={handleBulkDelete}
+            >
+              Hapus ({bulkSelected.size})
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--nav-offset)+0.75rem)] z-30 mx-auto w-full max-w-md px-4 md:max-w-3xl lg:max-w-5xl md:px-10">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="icon-lg"
+              aria-label="Tambah transaksi"
+              data-testid="trx-fab"
+              onClick={openAdd}
+              className="pointer-events-auto size-14 rounded-full shadow-lg transition-transform duration-200 ease-out-quart hover:scale-[1.03] active:scale-95 [&_svg:not([class*='size-'])]:size-6"
+            >
+              <Plus aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {formOpen && (
         <TransactionForm

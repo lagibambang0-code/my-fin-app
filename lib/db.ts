@@ -349,6 +349,8 @@ export type InvestmentRecord = {
   date: string
   time: string
   amount: number
+  /** Net deposit added in this entry (positive = inflow, negative = withdrawal). Default 0. */
+  deposit?: number
   note?: string
   createdAt: number
   isDel: number
@@ -526,6 +528,24 @@ export class DompetkuDB extends Dexie {
 
     // v10 — Investasi / Track Investasi (INVESTMENTS & INVESTMENT_RECORDS)
     this.version(10).stores({
+      currencies: 'id++, uid, ISO, IS_MAIN_CURRENCY',
+      settings: 'id++, uid, dataTypeKey',
+      categories: 'id++, uid, TYPE, STATUS, pUid',
+      assetGroups: 'id++, uid, TYPE, ORDERSEQ, ACC_GROUP_NAME, IS_DEL',
+      assets: 'id++, uid, groupUid, currencyUid, IS_DEL, IS_SHOW',
+      transactions:
+        'id++, uid, DO_TYPE, ZDATE, ctgUid, assetUid, IS_DEL, UTIME, MARK, RECUR_UID',
+      photos: 'id++, uid, txUid, IS_DEL',
+      budgets: 'id++, uid, targetUid, IS_TOTAL, IS_DEL, ORDER_SEQ',
+      budgetAmounts: 'id++, uid, budgetUid, BUDGET_PERIOD, IS_DEL',
+      repeats: 'id++, uid, NEXT_DATE, IS_DEL, REPEAT_TYPE, ORIGIN_TX_UID',
+      tags: 'id++, uid, isDel, orderSeq',
+      txTags: 'id++, uid, txUid, tagUid, isDel',
+      investments: 'id++, uid, isDel, createdAt',
+      investmentRecords: 'id++, uid, investmentUid, date, isDel',
+    })
+    // v11 — investmentRecords: add optional deposit field (no index change needed)
+    this.version(11).stores({
       currencies: 'id++, uid, ISO, IS_MAIN_CURRENCY',
       settings: 'id++, uid, dataTypeKey',
       categories: 'id++, uid, TYPE, STATUS, pUid',
@@ -1097,6 +1117,15 @@ export async function getAllCategories(): Promise<Category[]> {
   return list.sort((a, b) => a.ORDERSEQ - b.ORDERSEQ)
 }
 
+/**
+ * All categories including soft-deleted ones, used ONLY for reporting/statistics
+ * so that deleted sub-categories can still be resolved to their parent uid.
+ * Never expose this to the UI category pickers.
+ */
+export async function getAllCategoriesForReporting(): Promise<Category[]> {
+  return (await db.categories.toArray()).sort((a, b) => a.ORDERSEQ - b.ORDERSEQ)
+}
+
 export async function getCategoryByUid(uid: string): Promise<Category | undefined> {
   return db.categories.where('uid').equals(uid).first()
 }
@@ -1467,9 +1496,12 @@ export async function getCurrencyByUid(uid: string): Promise<Currency | undefine
 // Transaction helpers
 // ---------------------------------------------------------------------------
 
-/** Newest first: date descending, then insertion time descending. */
-function sortTransactionsDesc(a: Transaction, b: Transaction): number {
+/** Newest first: date descending, then time descending, then insertion time descending. */
+export function sortTransactionsDesc(a: Transaction, b: Transaction): number {
   if (a.ZDATE !== b.ZDATE) return a.ZDATE < b.ZDATE ? 1 : -1
+  const timeA = a.wtime || ''
+  const timeB = b.wtime || ''
+  if (timeA !== timeB) return timeA < timeB ? 1 : -1
   return (b.UTIME || 0) - (a.UTIME || 0)
 }
 
@@ -2147,6 +2179,7 @@ export async function createInvestmentRecord(input: {
   date: string
   time: string
   amount: number
+  deposit?: number
   note?: string
 }): Promise<number> {
   const now = Date.now()
@@ -2156,6 +2189,7 @@ export async function createInvestmentRecord(input: {
     date: input.date,
     time: input.time,
     amount: input.amount,
+    deposit: input.deposit ?? 0,
     note: input.note?.trim() || undefined,
     createdAt: now,
     isDel: 0,

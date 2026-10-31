@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   ChevronRight,
+  Layers,
   Plus,
   TrendingDown,
   TrendingUp,
@@ -19,9 +20,10 @@ import {
   getMainCurrency,
   initDB,
 } from '@/lib/db'
-import { formatCurrency, formatShortDate } from '@/lib/format'
+import { formatCurrency, formatPercent3, formatShortDate } from '@/lib/format'
 import { InvestmentDetailScreen } from '@/components/investment-detail-screen'
 import { InvestmentFormSheet } from '@/components/investment-form-sheet'
+import { InvestmentMergedScreen } from '@/components/investment-merged-screen'
 import { cn } from '@/lib/utils'
 
 type AssetSummaryData = {
@@ -40,6 +42,8 @@ export function InvestmentsScreen() {
   const [currency, setCurrency] = useState<Currency | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<InvestmentAsset | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [mergedOpen, setMergedOpen] = useState(false)
+  const [recordsByAsset, setRecordsByAsset] = useState<Map<string, InvestmentRecord[]>>(new Map())
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -53,10 +57,12 @@ export function InvestmentsScreen() {
       setInvestments(list)
       setCurrency(mainCur ?? null)
 
-      // Muat ringkasan nilai per aset
+      // Muat ringkasan nilai dan peta records per aset
       const sumMap = new Map<string, AssetSummaryData>()
+      const recsMap = new Map<string, InvestmentRecord[]>()
       for (const item of list) {
         const records = await getInvestmentRecords(item.uid)
+        recsMap.set(item.uid, records)
         const count = records.length
         const currentRecord = count > 0 ? records[count - 1] : null
         const prevRecord = count > 1 ? records[count - 2] : null
@@ -76,6 +82,7 @@ export function InvestmentsScreen() {
         })
       }
       setSummaries(sumMap)
+      setRecordsByAsset(recsMap)
     } finally {
       setLoading(false)
     }
@@ -116,15 +123,29 @@ export function InvestmentsScreen() {
               {t.investments.title}
             </h1>
           </div>
-          <Button
-            size="sm"
-            className="gap-1 text-xs font-semibold"
-            data-testid="investments-add-button"
-            onClick={() => setFormOpen(true)}
-          >
-            <Plus className="size-3.5" />
-            <span>{t.investments.addAsset}</span>
-          </Button>
+          <div className="flex items-center gap-1.5">
+            {investments.length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 text-xs font-semibold"
+                data-testid="investments-merge-button"
+                onClick={() => setMergedOpen(true)}
+              >
+                <Layers className="size-3.5" />
+                <span>Gabung</span>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="gap-1 text-xs font-semibold"
+              data-testid="investments-add-button"
+              onClick={() => setFormOpen(true)}
+            >
+              <Plus className="size-3.5" />
+              <span>{t.investments.addAsset}</span>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -163,7 +184,14 @@ export function InvestmentsScreen() {
                 ) : null}
                 <span>
                   {totalPortfolioDiff > 0 ? '+' : ''}
-                  {formatCurrency(totalPortfolioDiff, currency)}
+                  {formatCurrency(totalPortfolioDiff, currency)} (
+                  {totalPortfolioDiff > 0 ? '+' : ''}
+                  {formatPercent3(
+                    totalPortfolioValue > 0
+                      ? (totalPortfolioDiff / (totalPortfolioValue - totalPortfolioDiff)) * 100
+                      : 0,
+                  )}
+                  )
                 </span>
               </span>
               <span className="text-xs text-muted-foreground">
@@ -224,7 +252,7 @@ export function InvestmentsScreen() {
                             {t.investments.lastUpdated}: {formatShortDate(lastRecord.date)}
                           </span>
                         ) : (
-                          <span>Belum ada catatan nilai</span>
+                          <span>{t.investments.noRecords}</span>
                         )}
                       </div>
                     </div>
@@ -247,11 +275,11 @@ export function InvestmentsScreen() {
                         >
                           {diffVal > 0 ? '+' : ''}
                           {formatCurrency(diffVal, currency)} ({diffVal > 0 ? '+' : ''}
-                          {diffPct.toFixed(2)}%)
+                          {formatPercent3(diffPct)})
                         </span>
                       ) : (
                         <span className="text-[11px] text-muted-foreground">
-                          {recordCount === 1 ? '1 entri' : '0 entri'}
+                          {recordCount === 1 ? t.investments.entrySingular : `${recordCount} ${t.investments.entryPlural}`}
                         </span>
                       )}
                     </div>
@@ -279,6 +307,15 @@ export function InvestmentsScreen() {
         investment={selectedAsset}
         onClose={() => setSelectedAsset(null)}
         onUpdated={load}
+      />
+
+      {/* Layar Gabung Aset (Multi-Asset Merge - Read Only) */}
+      <InvestmentMergedScreen
+        open={mergedOpen}
+        investments={investments}
+        recordsByAsset={recordsByAsset}
+        currency={currency}
+        onClose={() => setMergedOpen(false)}
       />
     </div>
   )

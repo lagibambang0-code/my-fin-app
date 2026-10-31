@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -22,14 +22,24 @@ export function AssetStats() {
   const [currency, setCurrency] = useState<Currency | null>(null)
   const [total, setTotal] = useState(0)
 
-  useEffect(() => {
-    ;(async () => {
-      await initDB()
-      const [summary, main] = await Promise.all([getAssetSummary(), getMainCurrency()])
-      setTotal(summary.total)
-      setCurrency(main ?? null)
-    })()
+  const load = useCallback(async () => {
+    await initDB()
+    const [summary, main] = await Promise.all([getAssetSummary(), getMainCurrency()])
+    setTotal(summary.total)
+    setCurrency(main ?? null)
   }, [])
+
+  useEffect(() => {
+    load()
+
+    const onCurrencyChanged = (e: Event) => {
+      const cur = (e as CustomEvent<Currency>).detail
+      if (cur) setCurrency(cur)
+      void load()
+    }
+    window.addEventListener('dompetku:currency-changed', onCurrencyChanged)
+    return () => window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
+  }, [load])
 
   // Six months ending at the selected month. Without transaction history yet
   // every point shows the current total balance.

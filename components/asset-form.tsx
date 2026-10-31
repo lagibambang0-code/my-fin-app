@@ -68,7 +68,7 @@ export function AssetForm({
   const [name, setName] = useState(() => asset?.NIC_NAME ?? '')
   const [balanceText, setBalanceText] = useState(() => String(currentTotal))
   const [description, setDescription] = useState(() => asset?.DESCRIPTION ?? '')
-  const [currencyUid, setCurrencyUid] = useState(() => asset?.currencyUid ?? 'IDR_IDR')
+  const [currencyUid, setCurrencyUid] = useState(() => asset?.currencyUid ?? '')
   const [includeTotal, setIncludeTotal] = useState(() => (asset?.IS_INCLUDE_TOTAL ?? 1) === 1)
   const [isShow, setIsShow] = useState(() => (asset?.IS_SHOW ?? 1) === 1)
   const [payUid, setPayUid] = useState<string | null>(() => asset?.cardAssetUid ?? null)
@@ -103,6 +103,10 @@ export function AssetForm({
       setCurrencies(rows)
       setMainCurrency(main ?? null)
       setAllAssets(assets)
+      // Jika menambah aset baru tanpa currency eksplisit, gunakan mata uang utama yang aktif
+      if (!asset?.currencyUid && main?.uid) {
+        setCurrencyUid((curr) => curr || main.uid)
+      }
     })()
     return () => {
       active = false

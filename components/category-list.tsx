@@ -413,9 +413,14 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
                   */}
                   <button
                     type="button"
-                    onClick={() =>
-                      subCategoryEnabled ? setOpenParentUid(cat.uid) : openEdit(cat)
-                    }
+                    onClick={() => {
+                      if (subCategoryEnabled) {
+                        setSelectedIds(new Set())
+                        setOpenParentUid(cat.uid)
+                      } else {
+                        openEdit(cat)
+                      }
+                    }}
                     className="flex min-w-0 flex-1 flex-col items-start text-left"
                     aria-label={
                       subCategoryEnabled
