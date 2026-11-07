@@ -114,7 +114,7 @@ export function FullScreenSheet({
 
   if (variant === 'drawer') {
     return (
-      <div data-testid={testId} className="fixed inset-0 z-[70] flex flex-col justify-end">
+      <div data-testid={testId} className="fixed inset-0 z-[80] flex flex-col justify-end">
         <div
           aria-hidden="true"
           onClick={onClose}

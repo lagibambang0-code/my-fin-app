@@ -23,20 +23,24 @@ import { AssetDeleteScreen } from '@/components/asset-delete-screen'
 import { AssetReorderScreen } from '@/components/asset-reorder-screen'
 import { cn } from '@/lib/utils'
 import {
+  ASSET_GROUP_TYPE,
   type Asset,
   type AssetGroup,
   type AssetSummary,
   type Currency,
   getAllAssets,
   getAssetBalances,
+  getAssetByUid,
   getAssetGroups,
   getAssetSummary,
   getCurrencyByUid,
   getMainCurrency,
   initDB,
   softDeleteAsset,
+  getAllTransactions,
+  type Transaction,
 } from '@/lib/db'
-import { computeCardCycles, isCardGroup } from '@/lib/asset-utils'
+import { computeCardCycles, computeCardCycleAmounts, isCardGroup } from '@/lib/asset-utils'
 import { formatCurrency, formatDayMonth } from '@/lib/format'
 
 const GROUP_NAMES_EN_TO_ID: Record<string, string> = {
@@ -47,6 +51,7 @@ const GROUP_NAMES_EN_TO_ID: Record<string, string> = {
   Savings: 'Tabungan',
   'Top-Up/Prepaid': 'Top-up / Prabayar',
   Investments: 'Investasi',
+  Trading: 'Trading',
   Overdrafts: 'Cerukan',
   Loan: 'Pinjaman',
   Insurance: 'Asuransi',
@@ -61,9 +66,9 @@ const GROUP_NAMES_ID_TO_EN: Record<string, string> = {
   Tabungan: 'Savings',
   'Top-up / Prabayar': 'Top-Up/Prepaid',
   Investasi: 'Investments',
+  Trading: 'Trading',
   Cerukan: 'Overdrafts',
   Pinjaman: 'Loan',
-  Asuransi: 'Insurance',
   Lainnya: 'Others',
 }
 
@@ -80,6 +85,7 @@ export function AssetScreen() {
   const [mainCurrency, setMainCurrency] = useState<Currency | null>(null)
   const [currencyMap, setCurrencyMap] = useState<Record<string, Currency>>({})
   const [balances, setBalances] = useState<Map<string, number>>(new Map())
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
 
   const [menuOpen, setMenuOpen] = useState(false)
@@ -93,13 +99,15 @@ export function AssetScreen() {
 
   const load = useCallback(async () => {
     await initDB()
-    const [g, a, s, main, balanceMap] = await Promise.all([
+    const [g, a, s, main, balanceMap, txs] = await Promise.all([
       getAssetGroups(),
       getAllAssets(),
       getAssetSummary(),
       getMainCurrency(),
       getAssetBalances(),
+      getAllTransactions(),
     ])
+    setTransactions(txs)
     setGroups(g)
     setAssets(a)
     setSummary(s)
@@ -125,12 +133,21 @@ export function AssetScreen() {
       if (cur) setMainCurrency(cur)
       void load()
     }
+    const onTransactionsChanged = () => {
+      void load()
+    }
     window.addEventListener('dompetku:currency-changed', onCurrencyChanged)
-    return () => window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
+    window.addEventListener('dompetku:transactions-changed', onTransactionsChanged)
+    window.addEventListener('dompetku:settings-changed', onTransactionsChanged)
+    return () => {
+      window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
+      window.removeEventListener('dompetku:transactions-changed', onTransactionsChanged)
+      window.removeEventListener('dompetku:settings-changed', onTransactionsChanged)
+    }
   }, [load])
 
   const currencyFor = (asset: Asset) => currencyMap[asset.currencyUid] ?? mainCurrency
-  const balanceFor = (asset: Asset) => balances.get(asset.uid) ?? asset.BALANCE ?? 0
+  const balanceFor = (asset: Asset) => balances.get(asset.uid) ?? 0
 
   const openAdd = () => {
     setEditing(null)
@@ -139,7 +156,9 @@ export function AssetScreen() {
     setFormOpen(true)
   }
 
-  const openEdit = (asset: Asset) => {
+  const openEdit = async (asset: Asset) => {
+    const latestBalances = await getAssetBalances()
+    setBalances(latestBalances)
     setEditing(asset)
     setFormGroupUid(null)
     setMenuOpen(false)
@@ -190,7 +209,7 @@ export function AssetScreen() {
       <div className="flex flex-1 flex-col gap-4 px-4 md:px-10">
         {/* Ringkasan saldo */}
         <dl
-          className="grid grid-cols-3 gap-2 rounded-2xl border bg-card p-4"
+          className="grid grid-cols-3 gap-1.5 sm:gap-2 rounded-2xl border bg-card p-2.5 sm:p-4"
           data-testid="asset-summary"
         >
           <SummaryItem
@@ -228,10 +247,10 @@ export function AssetScreen() {
             {visibleGroups.map((group) => {
               const groupAssets = visibleByGroup(group.uid)
               const groupTotal = groupAssets.reduce((sum, a) => sum + balanceFor(a), 0)
-              const card = isCardGroup(group)
-              const cardAsset = assets.find((a) => a.groupUid === group.uid && isCardGroup(group))
+              const isCredit = group.TYPE === ASSET_GROUP_TYPE.creditCard
+              const cardAsset = isCredit ? assets.find((a) => a.groupUid === group.uid) : null
               const cycles =
-                card && cardAsset
+                cardAsset && cardAsset.CARD_DAY_FIN
                   ? computeCardCycles(cardAsset.CARD_DAY_FIN, cardAsset.CARD_DAY_PAY)
                   : null
               return (
@@ -255,13 +274,17 @@ export function AssetScreen() {
                       <>
                         <CardCycleRow
                           label={t.asset.mustPay}
+                          payLabel={t.asset.paymentDate}
                           cycle={cycles.payable}
+                          amount={computeCardCycleAmounts(cycles, transactions, cardAsset!.uid).payableAmount}
                           currency={currencyFor(cardAsset!)}
                           testId={`card-payable-${group.ACC_GROUP_NAME}`}
                         />
                         <CardCycleRow
                           label={t.asset.willPay}
+                          payLabel={t.asset.paymentDate}
                           cycle={cycles.upcoming}
+                          amount={computeCardCycleAmounts(cycles, transactions, cardAsset!.uid).upcomingAmount}
                           currency={currencyFor(cardAsset!)}
                           testId={`card-upcoming-${group.ACC_GROUP_NAME}`}
                         />
@@ -349,37 +372,43 @@ export function AssetScreen() {
         </div>
       </Overlay>
 
+      <AssetDetail
+        open={detailAsset !== null}
+        asset={detailAsset}
+        onClose={() => {
+          setDetailAsset(null)
+          void load()
+        }}
+        onEdit={async (asset) => {
+          await openEdit(asset)
+        }}
+      />
+
       {formOpen && (
         <AssetForm
+          key={editing?.id ?? 'new'}
           open
           asset={editing}
-          initialBalance={editing ? (balances.get(editing.uid) ?? editing.BALANCE) : 0}
+          initialBalance={editing ? (balances.get(editing.uid) ?? 0) : 0}
           groups={groups}
           initialGroupUid={formGroupUid}
           onClose={() => setFormOpen(false)}
-          onSaved={() => {
+          onSaved={async () => {
             setFormOpen(false)
-            setDetailAsset(null)
-            load()
+            if (editing?.uid && detailAsset?.uid === editing.uid) {
+              const refreshed = await getAssetByUid(editing.uid)
+              if (refreshed) setDetailAsset(refreshed)
+            }
+            await load()
           }}
           onDeleted={async () => {
             if (editing?.id) await softDeleteAsset(editing.id)
             setFormOpen(false)
             setDetailAsset(null)
-            load()
+            await load()
           }}
         />
       )}
-
-      <AssetDetail
-        open={detailAsset !== null}
-        asset={detailAsset}
-        onClose={() => setDetailAsset(null)}
-        onEdit={(asset) => {
-          setDetailAsset(null)
-          openEdit(asset)
-        }}
-      />
 
       <AssetVisibilityScreen
         open={visibilityOpen}
@@ -418,13 +447,22 @@ function SummaryItem({
   testId: string
   emphasis?: boolean
 }) {
+  const isLong = value.length > 11
+  const isVeryLong = value.length > 14
+
   return (
     <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dt className="truncate text-[11px] sm:text-xs text-muted-foreground">{label}</dt>
       <dd
         data-testid={testId}
+        title={value}
         className={cn(
-          'mt-1 truncate text-sm font-semibold tabular-nums md:text-base',
+          'mt-0.5 truncate font-semibold tabular-nums tracking-tight',
+          isVeryLong
+            ? 'text-[11px] sm:text-xs md:text-sm'
+            : isLong
+            ? 'text-[12px] sm:text-[13px] md:text-base'
+            : 'text-xs sm:text-sm md:text-base',
           emphasis && 'text-primary',
         )}
       >
@@ -436,12 +474,16 @@ function SummaryItem({
 
 function CardCycleRow({
   label,
+  payLabel,
   cycle,
+  amount,
   currency,
   testId,
 }: {
   label: string
+  payLabel: string
   cycle: { start: Date; end: Date; pay: Date }
+  amount: number
   currency?: Currency | null
   testId: string
 }) {
@@ -453,10 +495,10 @@ function CardCycleRow({
       <span className="text-muted-foreground">{label}</span>
       <span className="flex items-center gap-2 tabular-nums">
         <span className="text-muted-foreground">
-          {formatDayMonth(cycle.start)} ~ {formatDayMonth(cycle.end)} (Bayar:{' '}
+          {formatDayMonth(cycle.start)} ~ {formatDayMonth(cycle.end)} ({payLabel}:{' '}
           {formatDayMonth(cycle.pay)})
         </span>
-        <span className="font-medium">{formatCurrency(0, currency)}</span>
+        <span className="font-medium">{formatCurrency(amount, currency)}</span>
       </span>
     </div>
   )

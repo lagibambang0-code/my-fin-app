@@ -153,7 +153,7 @@ export function AssetDeleteScreen({ open, onClose, onChanged }: DeleteScreenProp
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm">{asset.NIC_NAME}</span>
                           <span className="block text-xs text-muted-foreground tabular-nums">
-                            {formatCurrency(balances.get(asset.uid) ?? asset.BALANCE ?? 0, currency)}
+                            {formatCurrency(balances.get(asset.uid) ?? 0, currency)}
                           </span>
                         </span>
                         {isChecked && (

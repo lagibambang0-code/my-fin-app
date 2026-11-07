@@ -78,3 +78,59 @@ export function computeCardCycles(
     upcoming: cycleAt(openMonth, settle, payment),
   }
 }
+
+export type CardCycleAmounts = {
+  payableAmount: number
+  upcomingAmount: number
+}
+
+/**
+ * Calculates card amounts according to Money Manager's AssetRepository.i:
+ * Takes non-deleted transactions for this card asset, computes the sum of expenses
+ * (DO_TYPE '1', '3', '8') in each cycle.
+ */
+export function computeCardCycleAmounts(
+  cycles: CardCycles,
+  transactions: { assetUid: string; DO_TYPE: string; ZDATE: string; AMOUNT_ACCOUNT?: number | null; ZMONEY?: string | null }[],
+  cardUid: string,
+): CardCycleAmounts {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const toYmd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+  const payableStart = toYmd(cycles.payable.start)
+  const payableEnd = toYmd(cycles.payable.end)
+  const upcomingStart = toYmd(cycles.upcoming.start)
+  const upcomingEnd = toYmd(cycles.upcoming.end)
+
+  let payableAmount = 0
+  let upcomingAmount = 0
+  let olderCharges = 0
+  let olderPayments = 0
+
+  for (const t of transactions) {
+    if (t.assetUid !== cardUid) continue
+    const isOut = t.DO_TYPE === '1' || t.DO_TYPE === 'expense' || t.DO_TYPE === '3' || t.DO_TYPE === 'transfer' || t.DO_TYPE === '8'
+    const isIn = t.DO_TYPE === '0' || t.DO_TYPE === 'income' || t.DO_TYPE === '4' || t.DO_TYPE === '7'
+    const amount = Number(t.AMOUNT_ACCOUNT ?? t.ZMONEY) || 0
+
+    if (t.ZDATE < payableStart) {
+      if (isOut) olderCharges += amount
+      else if (isIn) olderPayments += amount
+    } else if (t.ZDATE >= payableStart && t.ZDATE <= payableEnd) {
+      if (isOut) payableAmount += amount
+      else if (isIn) payableAmount -= amount
+    } else if (t.ZDATE >= upcomingStart && t.ZDATE <= upcomingEnd) {
+      if (isOut) upcomingAmount += amount
+      else if (isIn) upcomingAmount -= amount
+    }
+  }
+
+  const olderUnpaid = Math.max(0, olderCharges - olderPayments)
+  const olderExcess = Math.max(0, olderPayments - olderCharges)
+  payableAmount = Math.max(0, payableAmount + olderUnpaid - olderExcess)
+
+  return {
+    payableAmount: Math.max(0, payableAmount),
+    upcomingAmount: Math.max(0, upcomingAmount),
+  }
+}

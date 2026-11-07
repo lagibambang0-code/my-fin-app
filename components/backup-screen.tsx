@@ -24,7 +24,10 @@ import {
   getAllAssets,
   getAllCategories,
   getAllTransactions,
+  getMainCurrency,
   initDB,
+  resetAllData,
+  resetTransactionsOnly,
 } from '@/lib/db'
 import { formatDotRange, fromIso, monthBounds } from '@/lib/format'
 import { buildExcelHtml, downloadFile } from '@/lib/export'
@@ -173,6 +176,21 @@ export function BackupScreen() {
         backup.photos = stripMeta(photos, metaPhoto)
       }
 
+      const metaGeneral = ['isSynced', 'syncTime', 'syncVersion']
+      const repeats = await db.repeats.toArray()
+      backup.repeats = stripMeta(repeats, metaGeneral)
+
+      const budgets = await db.budgets.toArray()
+      backup.budgets = stripMeta(budgets, metaGeneral)
+
+      const budgetAmounts = await db.budgetAmounts.toArray()
+      backup.budgetAmounts = stripMeta(budgetAmounts, metaGeneral)
+
+      const assetGroups = await db.assetGroups.toArray()
+      backup.assetGroups = stripMeta(assetGroups, metaGeneral)
+
+      const currencies = await db.currencies.toArray()
+      backup.currencies = stripMeta(currencies, metaGeneral)
       const json = JSON.stringify(backup, null, 2)
       setBackupJson(json)
       setLastBackupInfo({ timestamp: new Date().toISOString(), size: json.length })
@@ -363,7 +381,7 @@ export function BackupScreen() {
     }
   }
   const router = useRouter()
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
 
   return (
     <div className="flex flex-1 flex-col">
@@ -554,19 +572,20 @@ export function BackupScreen() {
         onConfirm={async () => {
           const mode = confirmReset
           setConfirmReset(null)
-          if (mode === 'transactions') {
-            await db.transactions.clear()
-            toast.success(t.backup.resetSuccess)
-          } else if (mode === 'all') {
-            await db.delete()
-            try {
-              localStorage.removeItem('dompetku:onboarded')
-              localStorage.removeItem('dompetku:language')
-              localStorage.removeItem('dompetku:mode')
-              localStorage.removeItem('dompetku:palette')
-            } catch {}
-            await initDB()
-            window.location.href = '/transactions'
+          try {
+            if (mode === 'transactions') {
+              await resetTransactionsOnly()
+              toast.success(t.backup.resetSuccess)
+            } else if (mode === 'all') {
+              const main = await getMainCurrency()
+              const lang = (language as 'en' | 'id') || 'id'
+              await resetAllData(lang, main?.uid || 'IDR_IDR')
+              toast.success(t.backup.resetAll)
+              router.push('/transactions')
+            }
+          } catch (e) {
+            console.error('Gagal melakukan setel ulang data', e)
+            toast.error('Gagal melakukan setel ulang data')
           }
         }}
         onCancel={() => setConfirmReset(null)}

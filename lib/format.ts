@@ -16,12 +16,15 @@ export function formatCurrency(value: number, currency?: CurrencyFormat | null):
   const { SYMBOL, SYMBOL_POSITION, DECIMAL_POINT } = currency ?? DEFAULT_FORMAT
   const decimals = DECIMAL_POINT ?? 0
   const safe = Number.isFinite(value) ? value : 0
+  const isNeg = safe < 0
+  const abs = Math.abs(safe)
   const locale = (SYMBOL === '$' || decimals > 0) ? 'en-US' : 'id-ID'
   const formatted = new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(safe)
-  return SYMBOL_POSITION === 'back' ? `${formatted} ${SYMBOL}` : `${SYMBOL} ${formatted}`
+  }).format(abs)
+  const sign = isNeg ? '-' : ''
+  return SYMBOL_POSITION === 'back' ? `${sign}${formatted} ${SYMBOL}` : `${sign}${SYMBOL} ${formatted}`
 }
 
 /**

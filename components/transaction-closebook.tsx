@@ -85,10 +85,10 @@ export function TransactionCloseBook({
     let transfer = 0
     let fee = 0
     for (const tx of transactions) {
-      if (tx.DO_TYPE === 'expense') {
+      if (tx.DO_TYPE === 'expense' || tx.DO_TYPE === '1') {
         if (cardAssetUids.has(tx.assetUid)) card += amountOf(tx)
         else cash += amountOf(tx)
-      } else if (tx.DO_TYPE === 'transfer') {
+      } else if (tx.DO_TYPE === 'transfer' || tx.DO_TYPE === '3') {
         transfer += amountOf(tx)
         fee += Number(tx.FEE) || 0
       }
@@ -112,7 +112,7 @@ export function TransactionCloseBook({
     const body = transactions.map((tx) => [
       tx.ZDATE,
       tx.DO_TYPE,
-      tx.DO_TYPE === 'transfer' ? 'Transfer' : categoryLabelFor(tx, lookups),
+      (tx.DO_TYPE === 'transfer' || tx.DO_TYPE === '3' || tx.DO_TYPE === '4') ? 'Transfer' : categoryLabelFor(tx, lookups),
       assetLabelFor(tx, lookups),
       amountOf(tx),
       tx.ZCONTENT ?? '',

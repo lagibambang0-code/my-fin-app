@@ -10,15 +10,19 @@ import { MonthNavigator, type MonthValue } from '@/components/month-navigator'
 import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
+  db,
   type Asset,
+  type Category,
   type Currency,
   type Transaction,
   getAllCategories,
   getCurrencyByUid,
+  getSettingByKey,
+  getTransactionTagMap,
   getTransactionsTouchingAsset,
 } from '@/lib/db'
-import { formatCurrency, formatDotRange, formatShortDate, fromIso } from '@/lib/format'
-import { TransactionsEmpty } from '@/components/transaction-list'
+import { formatCurrency, formatDotRange, fromIso, todayIso } from '@/lib/format'
+import { DailyTransactionList, TransactionsEmpty, type Lookups } from '@/components/transaction-list'
 import { MonthlyBarChart } from '@/components/statistik-chart'
 import type { TrendPoint } from '@/lib/statistics-utils'
 
@@ -43,14 +47,17 @@ const MODES: { id: Mode; label: string }[] = [
 /** Signed effect of one transaction on one asset (mirrors getAssetBalanceDeltas). */
 function assetDelta(tx: Transaction, assetUid: string): number {
   const amount = Number(tx.AMOUNT_ACCOUNT ?? tx.ZMONEY) || 0
-  if (tx.DO_TYPE === 'income' && tx.assetUid === assetUid) return amount
-  if (tx.DO_TYPE === 'expense' && tx.assetUid === assetUid) return -amount
-  if (tx.DO_TYPE === 'transfer') {
+  if ((tx.DO_TYPE === 'income' || tx.DO_TYPE === '0' || tx.DO_TYPE === '2') && tx.assetUid === assetUid) return amount
+  if ((tx.DO_TYPE === 'expense' || tx.DO_TYPE === '1') && tx.assetUid === assetUid) return -amount
+  if (tx.DO_TYPE === 'transfer' || tx.DO_TYPE === '3') {
     let delta = 0
     if (tx.assetUid === assetUid) delta -= amount + (Number(tx.FEE) || 0)
-    if (tx.toAssetUid === assetUid) delta += Number(tx.IN_ZMONEY) || amount
+    if (tx.toAssetUid === assetUid && !tx.txUidTrans) delta += Number(tx.IN_ZMONEY) || amount
     return delta
   }
+  if (tx.DO_TYPE === '4' && tx.assetUid === assetUid) return amount
+  if ((tx.DO_TYPE === 'adjustment' || tx.DO_TYPE === '7') && tx.assetUid === assetUid) return amount
+  if (tx.DO_TYPE === '8' && tx.assetUid === assetUid) return -amount
   return 0
 }
 
@@ -65,10 +72,14 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
   const [view, setView] = useState<'list' | 'chart'>('list')
   const [currency, setCurrency] = useState<Currency | null>(null)
   const [rows, setRows] = useState<Transaction[]>([])
-  const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map())
+  const [categoriesList, setCategoriesList] = useState<Category[]>([])
+  const [assetsList, setAssetsList] = useState<Asset[]>([])
+  const [tagsMap, setTagsMap] = useState<Map<string, string[]>>(new Map())
+  const [showTime, setShowTime] = useState<boolean>(false)
   const [formOpen, setFormOpen] = useState(false)
   const [formKey, setFormKey] = useState(0)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const [initialDate, setInitialDate] = useState<string | null>(null)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
   const handleSwipeDown = (event: React.PointerEvent<HTMLElement>) => {
     swipeStart.current = { x: event.clientX, y: event.clientY }
@@ -100,19 +111,28 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
     setView('list')
     setPeriod(today)
     let active = true
-    ;(async () => {
-      const [cur, touching, categories] = await Promise.all([
+    const reload = async () => {
+      const [cur, touching, categories, assets, tagMap, timeSetting] = await Promise.all([
         getCurrencyByUid(asset.currencyUid),
         getTransactionsTouchingAsset(asset.uid),
         getAllCategories(),
+        db.assets.toArray() as Promise<Asset[]>,
+        getTransactionTagMap(),
+        getSettingByKey('time_display_order'),
       ])
       if (!active) return
       setCurrency(cur ?? null)
       setRows(touching)
-      setCategoryNames(new Map(categories.map((category) => [category.uid, category.NAME])))
-    })()
+      setCategoriesList(categories)
+      setAssetsList(assets)
+      setTagsMap(tagMap)
+      setShowTime(timeSetting?.ZDATA === '1' || timeSetting?.ZDATA === '3')
+    }
+    void reload()
+    window.addEventListener('dompetku:transactions-changed', reload)
     return () => {
       active = false
+      window.removeEventListener('dompetku:transactions-changed', reload)
     }
   }, [open, asset, today])
 
@@ -125,6 +145,14 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
       end: new Date(period.year, period.month + 1, 0),
     }
   }, [mode, period])
+
+  const lookups: Lookups = useMemo(() => ({
+    categories: new Map(categoriesList.map((c) => [c.uid, c])),
+    assets: new Map(assetsList.map((a) => [a.uid, a])),
+    currency,
+    tags: tagsMap,
+    showTime,
+  }), [categoriesList, assetsList, currency, tagsMap, showTime])
 
   if (!asset) return null
 
@@ -144,12 +172,16 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
   }
 
   const total = deposit - withdrawal
-  const running =
-    (asset.BALANCE || 0) + rows.reduce((sum, tx) => sum + assetDelta(tx, asset.uid), 0)
+  const running = rows.reduce((sum, tx) => sum + assetDelta(tx, asset.uid), 0)
 
-  // Saldo awal tahun = saldo sekarang − seluruh mutasi yang sudah tercatat.
-  const allDelta = rows.reduce((sum, tx) => sum + assetDelta(tx, asset.uid), 0)
-  let chartRunning = (asset.BALANCE || 0) - allDelta
+  // Saldo awal tahun: akumulasi seluruh mutasi sebelum tahun ini.
+  let chartRunning = 0
+  for (const tx of rows) {
+    const date = fromIso(tx.ZDATE)
+    if (date.getFullYear() < period.year) {
+      chartRunning += assetDelta(tx, asset.uid)
+    }
+  }
   const chartPoints: TrendPoint[] = SHORT_MONTHS.map((label, month) => {
     for (const tx of rows) {
       const date = fromIso(tx.ZDATE)
@@ -187,19 +219,6 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
           onClick={() => onEdit(asset)}
         >
           <Pencil className="size-4.5" />
-        </Button>
-        <Button
-          variant="default"
-          size="icon-sm"
-          aria-label="Catat transaksi untuk aset ini"
-          data-testid="asset-detail-add-tx"
-          onClick={() => {
-            setEditingTx(null)
-            setFormKey((k) => k + 1)
-            setFormOpen(true)
-          }}
-        >
-          <Plus className="size-4.5" />
         </Button>
       </header>
 
@@ -273,48 +292,46 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
           {periodRows.length === 0 ? (
             <TransactionsEmpty hint={t.stats.noData} />
           ) : (
-            <ul className="overflow-hidden rounded-xl border bg-card">
-              {periodRows.map((tx) => {
-                const delta = assetDelta(tx, asset.uid)
-                const title =
-                  tx.DO_TYPE === 'transfer'
-                    ? 'Transfer'
-                    : (tx.ctgUid ? categoryNames.get(tx.ctgUid) : null) ??
-                      tx.CATEGORY_NAME ??
-                      'Tanpa kategori'
-                return (
-                  <li
-                    key={tx.uid}
-                    data-testid={`detail-tx-${tx.uid}`}
-                    onClick={() => {
-                      setEditingTx(tx)
-                      setFormKey((k) => k + 1)
-                      setFormOpen(true)
-                    }}
-                    className="flex cursor-pointer items-center justify-between gap-3 border-t px-3 py-2.5 transition-colors first:border-t-0 hover:bg-secondary"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm">{title}</span>
-                      <span className="block text-xs text-muted-foreground tabular-nums">
-                        {formatShortDate(tx.ZDATE)}
-                      </span>
-                    </span>
-                    <span
-                      className={cn(
-                        'shrink-0 text-sm font-semibold tabular-nums',
-                        delta > 0 && 'text-primary',
-                        delta < 0 && 'text-destructive',
-                      )}
-                    >
-                      {formatCurrency(delta, currency)}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+          <DailyTransactionList
+            transactions={periodRows}
+            lookups={lookups}
+            onOpen={(tx) => {
+              setEditingTx(tx)
+              setInitialDate(null)
+              setFormKey((k) => k + 1)
+              setFormOpen(true)
+            }}
+            onAddDate={(dateIso) => {
+              setEditingTx(null)
+              setInitialDate(dateIso)
+              setFormKey((k) => k + 1)
+              setFormOpen(true)
+            }}
+            scopeAssetUid={asset.uid}
+          />
+        )}
             </>
           )}
+        </div>
+      </div>
+      {/* FAB: Catat transaksi untuk aset ini */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(1.5rem+env(safe-area-inset-bottom))] z-30 mx-auto w-full max-w-lg px-4">
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="icon-lg"
+            aria-label="Catat transaksi untuk aset ini"
+            data-testid="asset-detail-fab"
+            onClick={() => {
+              setEditingTx(null)
+              setInitialDate(null)
+              setFormKey((k) => k + 1)
+              setFormOpen(true)
+            }}
+            className="pointer-events-auto size-14 rounded-full shadow-lg transition-transform duration-200 ease-out-quart hover:scale-[1.03] active:scale-95 [&_svg:not([class*='size-'])]:size-6"
+          >
+            <Plus aria-hidden="true" />
+          </Button>
         </div>
       </div>
 
@@ -323,31 +340,43 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
           key={formKey}
           open
           transaction={editingTx}
-          initial={{ assetUid: asset.uid }}
+          initial={{
+            assetUid: asset.uid,
+            assetName: asset.NIC_NAME,
+            date: initialDate ?? undefined,
+            time: initialDate && initialDate < todayIso() ? '20:55' : undefined,
+          }}
           onClose={() => {
             setFormOpen(false)
             setEditingTx(null)
+            setInitialDate(null)
           }}
           onSaved={async () => {
             setFormOpen(false)
             setEditingTx(null)
-            const [touching, cats] = await Promise.all([
+            setInitialDate(null)
+            const [touching, cats, asts] = await Promise.all([
               getTransactionsTouchingAsset(asset.uid),
               getAllCategories(),
+              db.assets.toArray() as Promise<Asset[]>,
             ])
             setRows(touching)
-            setCategoryNames(new Map(cats.map((c) => [c.uid, c.NAME])))
+            setCategoriesList(cats)
+            setAssetsList(asts)
           }}
           onDeleted={async () => {
             if (editingTx?.id) await softDeleteTransaction(editingTx.id)
             setFormOpen(false)
             setEditingTx(null)
-            const [touching, cats] = await Promise.all([
+            setInitialDate(null)
+            const [touching, cats, asts] = await Promise.all([
               getTransactionsTouchingAsset(asset.uid),
               getAllCategories(),
+              db.assets.toArray() as Promise<Asset[]>,
             ])
             setRows(touching)
-            setCategoryNames(new Map(cats.map((c) => [c.uid, c.NAME])))
+            setCategoriesList(cats)
+            setAssetsList(asts)
           }}
           onOpenBookmarks={() => {}}
           onCopy={() => {}}
@@ -358,10 +387,24 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
 }
 
 function Stat({ label, value, testId }: { label: string; value: string; testId?: string }) {
+  const isLong = value.length > 11
+  const isVeryLong = value.length > 14
+
   return (
-    <div className="rounded-xl border bg-card p-3">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-sm font-semibold tabular-nums" data-testid={testId}>
+    <div className="rounded-xl border bg-card p-2.5 sm:p-3 min-w-0">
+      <dt className="truncate text-[11px] sm:text-xs text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          'mt-0.5 truncate font-semibold tabular-nums tracking-tight',
+          isVeryLong
+            ? 'text-[11px] sm:text-xs md:text-sm'
+            : isLong
+            ? 'text-[12px] sm:text-[13px] md:text-base'
+            : 'text-xs sm:text-sm md:text-base',
+        )}
+        data-testid={testId}
+        title={value}
+      >
         {value}
       </dd>
     </div>

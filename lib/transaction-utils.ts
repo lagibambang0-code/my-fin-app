@@ -37,8 +37,8 @@ export function amountOf(t: Transaction): number {
 /** Signed contribution of a transaction to a period total. */
 export function netOf(t: Transaction): number {
   const amount = amountOf(t)
-  if (t.DO_TYPE === 'income') return amount
-  if (t.DO_TYPE === 'expense') return -amount
+  if (t.DO_TYPE === 'income' || t.DO_TYPE === '0' || t.DO_TYPE === '2') return amount
+  if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1') return -amount
   return 0 // transfers move money between assets
 }
 
@@ -53,8 +53,8 @@ export function summarize(rows: Transaction[]): Summary {
   let expense = 0
   for (const t of rows) {
     const amount = amountOf(t)
-    if (t.DO_TYPE === 'income') income += amount
-    else if (t.DO_TYPE === 'expense') expense += amount
+    if (t.DO_TYPE === 'income' || t.DO_TYPE === '0' || t.DO_TYPE === '2') income += amount
+    else if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1') expense += amount
   }
   return { income, expense, total: income - expense }
 }
@@ -67,7 +67,7 @@ export type DayGroup = {
 }
 
 /** Group transactions per date (newest first) with daily in/out totals. */
-export function groupByDate(rows: Transaction[]): DayGroup[] {
+export function groupByDate(rows: Transaction[], scopeAssetUid?: string): DayGroup[] {
   const map = new Map<string, DayGroup>()
   for (const t of rows) {
     let group = map.get(t.ZDATE)
@@ -76,8 +76,28 @@ export function groupByDate(rows: Transaction[]): DayGroup[] {
       map.set(t.ZDATE, group)
     }
     const amount = amountOf(t)
-    if (t.DO_TYPE === 'income') group.income += amount
-    else if (t.DO_TYPE === 'expense') group.expense += amount
+    if (scopeAssetUid) {
+      if (t.DO_TYPE === 'transfer' || t.DO_TYPE === '3' || t.DO_TYPE === '4') {
+        if (t.assetUid === scopeAssetUid) {
+          group.expense += amount + (Number(t.FEE) || 0)
+        } else if (t.toAssetUid === scopeAssetUid) {
+          group.income += Number(t.IN_ZMONEY) || amount
+        }
+      } else if (
+        t.DO_TYPE === 'income' ||
+        t.DO_TYPE === '0' ||
+        t.DO_TYPE === '2' ||
+        t.DO_TYPE === '7' ||
+        t.DO_TYPE === 'adjustment'
+      ) {
+        group.income += amount
+      } else if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1' || t.DO_TYPE === '8') {
+        group.expense += amount
+      }
+    } else {
+      if (t.DO_TYPE === 'income' || t.DO_TYPE === '0' || t.DO_TYPE === '2') group.income += amount
+      else if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1') group.expense += amount
+    }
     group.items.push(t)
   }
   const result = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : -1))

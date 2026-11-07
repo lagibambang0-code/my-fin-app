@@ -330,6 +330,8 @@ export const TRANSLATIONS = {
       cardExpense: 'Expenses (Card)',
       transferTotal: 'Transfer (Cash, Accounts →)',
       transferFee: 'Transfer fee',
+      selectAccount: 'Select account',
+      selectTag: 'Select tag',
     },
     stats: {
       title: 'Statistics',
@@ -737,6 +739,8 @@ export const TRANSLATIONS = {
       cardExpense: 'Pengeluaran (Kartu)',
       transferTotal: 'Transfer (Cash, Accounts →)',
       transferFee: 'Biaya transfer',
+      selectAccount: 'Pilih aset',
+      selectTag: 'Pilih tag',
     },
     stats: {
       title: 'Statistik',

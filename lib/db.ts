@@ -69,7 +69,7 @@ export const ASSET_GROUP_TYPE = {
   topUp: 6,
   others: 7,
   investments: 8,
-  overdraft: 9,
+  trading: 9,
   insurance: 10,
   cash: 11,
 } as const
@@ -78,7 +78,6 @@ export const ASSET_GROUP_TYPE = {
 export const LIABILITY_GROUP_TYPES = new Set<number>([
   ASSET_GROUP_TYPE.creditCard,
   ASSET_GROUP_TYPE.loan,
-  ASSET_GROUP_TYPE.overdraft,
 ])
 
 export type AssetGroup = {
@@ -100,7 +99,6 @@ export type Asset = {
   uid: string
   NIC_NAME: string
   ORDERSEQ: number
-  BALANCE: number
   DESCRIPTION: string
   ZDATA: string
   ZDATA1: string
@@ -400,7 +398,6 @@ export class DompetkuDB extends Dexie {
           .table('assets')
           .toCollection()
           .modify((a: Record<string, unknown>) => {
-            if (a.BALANCE === undefined) a.BALANCE = 0
             if (a.DESCRIPTION === undefined) a.DESCRIPTION = ''
             if (a.IS_SHOW === undefined) a.IS_SHOW = 1
             if (a.IS_INCLUDE_TOTAL === undefined) a.IS_INCLUDE_TOTAL = 1
@@ -591,7 +588,7 @@ export const SEED_CURRENCIES: Omit<Currency, 'id'>[] = [
     SYMBOL: '$',
     INSERT_TYPE: 'manual',
     SYMBOL_POSITION: 'front',
-    IS_MAIN_CURRENCY: 1,
+    IS_MAIN_CURRENCY: 0,
     IS_SHOW: 1,
     MODIFY_DATE: NOW,
     DECIMAL_POINT: 2,
@@ -610,7 +607,7 @@ export const SEED_CURRENCIES: Omit<Currency, 'id'>[] = [
     SYMBOL: 'Rp',
     INSERT_TYPE: 'manual',
     SYMBOL_POSITION: 'front',
-    IS_MAIN_CURRENCY: 0,
+    IS_MAIN_CURRENCY: 1,
     IS_SHOW: 1,
     MODIFY_DATE: NOW,
     DECIMAL_POINT: 0,
@@ -736,7 +733,7 @@ export const SEED_CURRENCIES: Omit<Currency, 'id'>[] = [
 /** Default ZETC settings (verified keys from Money Manager .mmbak). */
 export const SEED_SETTINGS: Omit<Setting, 'id'>[] = [
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '1', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'start_day', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
-  { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '4', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'week_start_day', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'week_start_day', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'money_color', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'carry_over', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'card_accounting_type', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
@@ -748,9 +745,10 @@ export const SEED_SETTINGS: Omit<Setting, 'id'>[] = [
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '0', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'input_form_order', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: '5', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'time_display_order', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: 'change_date', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'swipe_gesture', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: genUid('zetc'), E_UTIME: NOW, ZDATATYPE: 0, ZDATA: 'IDR_IDR', ZZDATA: '', ZZDATA1: '', ZZDATA2: '', dataTypeKey: 'main_currency', isDel: 0, isSynced: 0, syncTime: 0, syncVersion: 1 },
 ]
 
-/** Default income categories (TYPE=0, STATUS=0) with stable uids. */
+/** Default income categories — English (TYPE=0, STATUS=0) with stable uids. */
 export const DEFAULT_INCOME_CATEGORIES = [
   { uid: 'cat_inc_1', NAME: '🤑 Allowance', ORDERSEQ: 1 },
   { uid: 'cat_inc_2', NAME: '💰 Salary', ORDERSEQ: 2 },
@@ -759,7 +757,16 @@ export const DEFAULT_INCOME_CATEGORIES = [
   { uid: 'cat_inc_5', NAME: 'Other', ORDERSEQ: 5 },
 ] as const
 
-/** Default expense categories (TYPE=1, STATUS=0) with stable uids. */
+/** Default income categories — Indonesian. */
+export const DEFAULT_INCOME_CATEGORIES_ID = [
+  { uid: 'cat_inc_1', NAME: '🤑 Uang Saku', ORDERSEQ: 1 },
+  { uid: 'cat_inc_2', NAME: '💰 Gaji', ORDERSEQ: 2 },
+  { uid: 'cat_inc_3', NAME: '💵 Kas Kecil', ORDERSEQ: 3 },
+  { uid: 'cat_inc_4', NAME: '🏅 Bonus', ORDERSEQ: 4 },
+  { uid: 'cat_inc_5', NAME: 'Lainnya', ORDERSEQ: 5 },
+] as const
+
+/** Default expense categories — English (TYPE=1, STATUS=0) with stable uids. */
 export const DEFAULT_EXPENSE_CATEGORIES = [
   { uid: 'cat_exp_1', NAME: '🍜 Food', ORDERSEQ: 1 },
   { uid: 'cat_exp_2', NAME: '👬🏻 Social Life', ORDERSEQ: 2 },
@@ -775,7 +782,23 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   { uid: 'cat_exp_12', NAME: 'Other', ORDERSEQ: 12 },
 ] as const
 
-/** Default sub-categories (TYPE=2, STATUS=2) grouped by parent NAME. 37 rows. */
+/** Default expense categories — Indonesian. */
+export const DEFAULT_EXPENSE_CATEGORIES_ID = [
+  { uid: 'cat_exp_1', NAME: '🍜 Makanan', ORDERSEQ: 1 },
+  { uid: 'cat_exp_2', NAME: '👬🏻 Kehidupan Sosial', ORDERSEQ: 2 },
+  { uid: 'cat_exp_3', NAME: '🐶 Hewan Peliharaan', ORDERSEQ: 3 },
+  { uid: 'cat_exp_4', NAME: '🚖 Transportasi', ORDERSEQ: 4 },
+  { uid: 'cat_exp_5', NAME: '🖼 Budaya', ORDERSEQ: 5 },
+  { uid: 'cat_exp_6', NAME: '🪑 Rumah Tangga', ORDERSEQ: 6 },
+  { uid: 'cat_exp_7', NAME: '🧥 Pakaian', ORDERSEQ: 7 },
+  { uid: 'cat_exp_8', NAME: '💄 Kecantikan', ORDERSEQ: 8 },
+  { uid: 'cat_exp_9', NAME: '🧘🏼 Kesehatan', ORDERSEQ: 9 },
+  { uid: 'cat_exp_10', NAME: '📙 Pendidikan', ORDERSEQ: 10 },
+  { uid: 'cat_exp_11', NAME: '🎁 Hadiah', ORDERSEQ: 11 },
+  { uid: 'cat_exp_12', NAME: 'Lainnya', ORDERSEQ: 12 },
+] as const
+
+/** Default sub-categories (TYPE=2, STATUS=2) grouped by parent NAME — English. */
 export const DEFAULT_SUB_CATEGORIES: Record<string, string[]> = {
   '🍜 Food': ['Lunch', 'Dinner', 'Eating out', 'Beverages'],
   '👬🏻 Social Life': ['Friend', 'Fellowship', 'Alumni', 'Dues'],
@@ -788,38 +811,56 @@ export const DEFAULT_SUB_CATEGORIES: Record<string, string[]> = {
   '📙 Education': ['Schooling', 'Textbooks', 'School supplies', 'Academy'],
 }
 
-export const SEED_CATEGORIES: Omit<Category, 'id'>[] = [
-  ...DEFAULT_INCOME_CATEGORIES.map((c) => ({
-    uid: c.uid,
-    C_IS_DEL: 0,
-    C_UTIME: NOW,
-    NAME: c.NAME,
-    ORDERSEQ: c.ORDERSEQ,
-    TYPE: 0,
-    STATUS: 0,
-    pUid: null,
-    IS_DEFAULT: 1,
-    isSynced: 0,
-    syncTime: 0,
-    syncVersion: 1,
-  })),
-  ...DEFAULT_EXPENSE_CATEGORIES.map((c) => ({
-    uid: c.uid,
-    C_IS_DEL: 0,
-    C_UTIME: NOW,
-    NAME: c.NAME,
-    ORDERSEQ: c.ORDERSEQ,
-    TYPE: 1,
-    STATUS: 0,
-    pUid: null,
-    IS_DEFAULT: 1,
-    isSynced: 0,
-    syncTime: 0,
-    syncVersion: 1,
-  })),
-]
+/** Default sub-categories — Indonesian, keyed by parent NAME (ID). */
+export const DEFAULT_SUB_CATEGORIES_ID: Record<string, string[]> = {
+  '🍜 Makanan': ['Makan Siang', 'Makan Malam', 'Makan di Luar', 'Minuman'],
+  '👬🏻 Kehidupan Sosial': ['Teman', 'Persekutuan', 'Alumni', 'Iuran'],
+  '🚖 Transportasi': ['Bus', 'Kereta', 'Taksi', 'Mobil'],
+  '🖼 Budaya': ['Buku', 'Film', 'Musik', 'Aplikasi'],
+  '🪑 Rumah Tangga': ['Peralatan', 'Furnitur', 'Dapur', 'Perlengkapan Mandi', 'Chandlery'],
+  '🧥 Pakaian': ['Baju', 'Fashion', 'Sepatu', 'Laundry'],
+  '💄 Kecantikan': ['Kosmetik', 'Makeup', 'Aksesori', 'Perawatan'],
+  '🧘🏼 Kesehatan': ['Kesehatan', 'Yoga', 'Rumah Sakit', 'Obat-obatan'],
+  '📙 Pendidikan': ['Sekolah', 'Buku Teks', 'Perlengkapan Sekolah', 'Kursus'],
+}
 
-/** Default asset groups (11 groups, per Money Manager). */
+/** Build SEED_CATEGORIES from the right locale constants. */
+function buildSeedCategories(lang: 'en' | 'id'): Omit<Category, 'id'>[] {
+  const inc = lang === 'id' ? DEFAULT_INCOME_CATEGORIES_ID : DEFAULT_INCOME_CATEGORIES
+  const exp = lang === 'id' ? DEFAULT_EXPENSE_CATEGORIES_ID : DEFAULT_EXPENSE_CATEGORIES
+  return [
+    ...inc.map((c) => ({
+      uid: c.uid,
+      C_IS_DEL: 0,
+      C_UTIME: NOW,
+      NAME: c.NAME,
+      ORDERSEQ: c.ORDERSEQ,
+      TYPE: 0,
+      STATUS: 0,
+      pUid: null,
+      IS_DEFAULT: 1,
+      isSynced: 0,
+      syncTime: 0,
+      syncVersion: 1,
+    })),
+    ...exp.map((c) => ({
+      uid: c.uid,
+      C_IS_DEL: 0,
+      C_UTIME: NOW,
+      NAME: c.NAME,
+      ORDERSEQ: c.ORDERSEQ,
+      TYPE: 1,
+      STATUS: 0,
+      pUid: null,
+      IS_DEFAULT: 1,
+      isSynced: 0,
+      syncTime: 0,
+      syncVersion: 1,
+    })),
+  ]
+}
+
+/** Default asset groups — English (11 groups, per Money Manager). */
 export const SEED_ASSET_GROUPS: Omit<AssetGroup, 'id'>[] = [
   { uid: 'ag_cash', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Cash', TYPE: 11, ORDERSEQ: 1, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: 'ag_accounts', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Accounts', TYPE: 1, ORDERSEQ: 2, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
@@ -828,10 +869,25 @@ export const SEED_ASSET_GROUPS: Omit<AssetGroup, 'id'>[] = [
   { uid: 'ag_savings', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Savings', TYPE: 4, ORDERSEQ: 5, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: 'ag_topup', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Top-Up/Prepaid', TYPE: 6, ORDERSEQ: 6, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: 'ag_invest', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Investments', TYPE: 8, ORDERSEQ: 7, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
-  { uid: 'ag_overdraft', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Overdrafts', TYPE: 9, ORDERSEQ: 8, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_trading', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Trading', TYPE: 9, ORDERSEQ: 8, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: 'ag_loan', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Loan', TYPE: 5, ORDERSEQ: 9, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: 'ag_insurance', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Insurance', TYPE: 10, ORDERSEQ: 10, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
   { uid: 'ag_others', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Others', TYPE: 7, ORDERSEQ: 11, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+]
+
+/** Default asset groups — Indonesian. */
+export const SEED_ASSET_GROUPS_ID: Omit<AssetGroup, 'id'>[] = [
+  { uid: 'ag_cash', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Kas', TYPE: 11, ORDERSEQ: 1, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_accounts', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Rekening', TYPE: 1, ORDERSEQ: 2, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_card', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Kartu', TYPE: 2, ORDERSEQ: 3, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_debit', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Kartu Debit', TYPE: 3, ORDERSEQ: 4, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_savings', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Tabungan', TYPE: 4, ORDERSEQ: 5, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_topup', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Top-Up/Prabayar', TYPE: 6, ORDERSEQ: 6, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_invest', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Investasi', TYPE: 8, ORDERSEQ: 7, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_trading', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Trading', TYPE: 9, ORDERSEQ: 8, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_loan', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Pinjaman', TYPE: 5, ORDERSEQ: 9, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_insurance', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Asuransi', TYPE: 10, ORDERSEQ: 10, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
+  { uid: 'ag_others', IS_DEL: 0, USETIME: NOW, ACC_GROUP_NAME: 'Lainnya', TYPE: 7, ORDERSEQ: 11, IS_DEFAULT: 1, isSynced: 0, syncTime: 0, syncVersion: 1 },
 ]
 
 /** Arabic-numeral translations shown as a second line for some groups. */
@@ -841,7 +897,7 @@ export const ASSET_GROUP_TRANSLATIONS: Record<string, string> = {
 }
 
 /** Core groups that show an asset icon instead of the delete checkbox. */
-export const CORE_ASSET_GROUP_NAMES = ['Cash', 'Accounts', 'Card', 'Debit Card']
+export const CORE_ASSET_GROUP_NAMES = ['Cash', 'Accounts', 'Card', 'Debit Card', 'Kas', 'Rekening', 'Kartu', 'Kartu Debit']
 
 /** Fields shared by every seeded asset. */
 function seedAssetBase(
@@ -849,16 +905,16 @@ function seedAssetBase(
   NIC_NAME: string,
   ORDERSEQ: number,
   groupUid: string,
+  currencyUid: string,
 ): Omit<Asset, 'id'> {
   return {
     uid,
     NIC_NAME,
     ORDERSEQ,
-    BALANCE: 0,
     DESCRIPTION: '',
-    ZDATA: '',
+    ZDATA: '0',
     ZDATA1: '',
-    ZDATA2: '',
+    ZDATA2: '0',
     IS_TRANS_EXPENSE: 0,
     IS_CARD_AUTO_PAY: 0,
     APP_PACKAGE: null,
@@ -874,7 +930,7 @@ function seedAssetBase(
     IS_SHOW: 1,
     IS_INCLUDE_TOTAL: 1,
     IS_DEL: 0,
-    currencyUid: 'USD_USD',
+    currencyUid,
     cardAssetUid: null,
     groupUid,
     IS_DEFAULT: 1,
@@ -884,22 +940,37 @@ function seedAssetBase(
   }
 }
 
-/** Default assets (Cash, Accounts, Card) — all balance 0. */
+/** Build SEED_ASSETS for a given language and currency. */
+function buildSeedAssets(lang: 'en' | 'id', currencyUid: string): Omit<Asset, 'id'>[] {
+  const names =
+    lang === 'id'
+      ? { cash: 'Kas', accounts: 'Rekening', card: 'Kartu' }
+      : { cash: 'Cash', accounts: 'Accounts', card: 'Card' }
+  return [
+    seedAssetBase('ast_cash', names.cash, 1, 'ag_cash', currencyUid),
+    seedAssetBase('ast_accounts', names.accounts, 2, 'ag_accounts', currencyUid),
+    { ...seedAssetBase('ast_card', names.card, 3, 'ag_card', currencyUid), cardAssetUid: 'ast_accounts' },
+  ]
+}
+
+/** Kept for back-compat — English default assets (USD). */
+export const SEED_ASSETS: Omit<Asset, 'id'>[] = buildSeedAssets('en', 'USD_USD')
+
 /** Initial tags seeded on install — empty per Money Manager parity (1B). */
 export const SEED_TAGS: Omit<Tag, 'id'>[] = []
-
-export const SEED_ASSETS: Omit<Asset, 'id'>[] = [
-  seedAssetBase('ast_cash', 'Cash', 1, 'ag_cash'),
-  seedAssetBase('ast_accounts', 'Accounts', 2, 'ag_accounts'),
-  // Card's "Bayar" (payer) points at the seeded Accounts asset.
-  { ...seedAssetBase('ast_card', 'Card', 3, 'ag_card'), cardAssetUid: 'ast_accounts' },
-]
-
 /**
- * Run seed once. Safe to call multiple times — checks if tables already
- * contain data before inserting.
+ * Seed the database for a new user with locale-aware defaults.
+ * Safe to call multiple times — skips each table if it already has rows.
+ *
+ * @param lang       'en' | 'id'  — determines names of categories, groups, and assets.
+ * @param currencyUid  e.g. 'IDR_IDR' or 'USD_USD' — sets the main currency and
+ *                   stamps every seeded asset with that currency.
  */
-export async function seedDatabase(): Promise<void> {
+export async function seedDatabase(
+  lang: 'en' | 'id' = 'en',
+  currencyUid = 'USD_USD',
+): Promise<void> {
+  await db.open()
   const [currCount, setCount, catCount, grpCount, astCount, tagCount] =
     await Promise.all([
       db.currencies.count(),
@@ -910,58 +981,50 @@ export async function seedDatabase(): Promise<void> {
       db.tags.count(),
     ])
 
+  // Currencies — always ensure all are present
   if (currCount === 0) {
     await db.currencies.bulkAdd(SEED_CURRENCIES)
-  }
-  if (setCount === 0) {
-    await db.settings.bulkAdd(SEED_SETTINGS)
-  }
-  if (catCount === 0) {
-    await db.categories.bulkAdd(SEED_CATEGORIES)
-  }
-  if (grpCount === 0) {
-    await db.assetGroups.bulkAdd(SEED_ASSET_GROUPS)
-  }
-  if (astCount === 0) {
-    await db.assets.bulkAdd(SEED_ASSETS)
-  }
-  if (tagCount === 0) {
-    await db.tags.bulkAdd(SEED_TAGS)
-  }
-  // Ensure default currencies are all present in DB
-  for (const seed of SEED_CURRENCIES) {
-    const existing = await db.currencies.where('uid').equals(seed.uid).first()
-    if (!existing) {
-      await db.currencies.add({
-        ...seed,
-        IS_MAIN_CURRENCY: 0,
-      })
+  } else {
+    for (const seed of SEED_CURRENCIES) {
+      const existing = await db.currencies.where('uid').equals(seed.uid).first()
+      if (!existing) {
+        await db.currencies.add({ ...seed, IS_MAIN_CURRENCY: 0 })
+      }
     }
   }
 
-  // Ensure main currency follows user setting if set, or defaults to USD
-  const mainCurSetting = await db.settings.where('dataTypeKey').equals('main_currency').first()
-  if (mainCurSetting?.ZDATA) {
-    const targetUid = mainCurSetting.ZDATA
-    const current = await db.currencies.where('IS_MAIN_CURRENCY').equals(1).first()
-    if (!current || current.uid !== targetUid) {
-      const all = await db.currencies.toArray()
-      for (const c of all) {
-        const shouldBeMain = c.uid === targetUid ? 1 : 0
-        if (c.IS_MAIN_CURRENCY !== shouldBeMain && c.id != null) {
-          await db.currencies.update(c.id, { IS_MAIN_CURRENCY: shouldBeMain })
-        }
-      }
-    }
+  // Settings
+  if (setCount === 0) {
+    await db.settings.bulkAdd(SEED_SETTINGS)
+  }
+
+  // Categories — locale-aware
+  if (catCount === 0) {
+    await db.categories.bulkAdd(buildSeedCategories(lang))
+  }
+
+  // Asset groups — locale-aware
+  if (grpCount === 0) {
+    const groups = lang === 'id' ? SEED_ASSET_GROUPS_ID : SEED_ASSET_GROUPS
+    await db.assetGroups.bulkAdd(groups)
+  }
+
+  // Assets — locale-aware + correct currency
+  if (astCount === 0) {
+    await db.assets.bulkAdd(buildSeedAssets(lang, currencyUid))
+  }
+
+  if (tagCount === 0) {
+    await db.tags.bulkAdd(SEED_TAGS)
+  }
+
+  // Set main currency only if user has not set one yet
+  const existingMainSetting = await db.settings.where('dataTypeKey').equals('main_currency').first()
+  if (!existingMainSetting?.ZDATA) {
+    await setMainCurrency(currencyUid)
   } else {
-    // If no main currency is set at all (fresh install), default to USD
-    const hasMain = await db.currencies.where('IS_MAIN_CURRENCY').equals(1).count()
-    if (hasMain === 0) {
-      const usd = await db.currencies.where('uid').equals('USD_USD').first()
-      if (usd?.id != null) {
-        await db.currencies.update(usd.id, { IS_MAIN_CURRENCY: 1 })
-      }
-    }
+    // Re-verify that IS_MAIN_CURRENCY in currencies table matches the persisted user setting
+    await setMainCurrency(existingMainSetting.ZDATA)
   }
 }
 
@@ -973,13 +1036,15 @@ export async function seedDatabase(): Promise<void> {
  *    legacy random uids).
  */
 export async function ensureCategoryDefaults(): Promise<void> {
-  // 1. Backfill IS_DEFAULT
+  // 1. Backfill IS_DEFAULT (handles rows created before the field existed)
   const allCats = await db.categories.toArray()
   const missing = allCats.filter((c) => c.IS_DEFAULT === undefined)
   if (missing.length > 0) {
     const defaultKeys = new Set<string>()
     DEFAULT_INCOME_CATEGORIES.forEach((c) => defaultKeys.add(`0|${c.NAME}`))
     DEFAULT_EXPENSE_CATEGORIES.forEach((c) => defaultKeys.add(`1|${c.NAME}`))
+    DEFAULT_INCOME_CATEGORIES_ID.forEach((c) => defaultKeys.add(`0|${c.NAME}`))
+    DEFAULT_EXPENSE_CATEGORIES_ID.forEach((c) => defaultKeys.add(`1|${c.NAME}`))
     await db.transaction('rw', db.categories, async () => {
       for (const c of missing) {
         await db.categories.update(c.id!, {
@@ -989,7 +1054,7 @@ export async function ensureCategoryDefaults(): Promise<void> {
     })
   }
 
-  // 2. Seed default sub-categories once
+  // 2. Seed default sub-categories once — pick locale based on existing cats
   const subCount = await db.categories.where('STATUS').equals(2).count()
   if (subCount === 0) {
     const parents = await db.categories
@@ -998,8 +1063,15 @@ export async function ensureCategoryDefaults(): Promise<void> {
       .and((c) => c.STATUS === 0 && c.C_IS_DEL === 0)
       .toArray()
     const byName = new Map(parents.map((p) => [p.NAME, p]))
+
+    // Auto-detect: if any Indonesian expense category name is present, use ID subs
+    const isId = parents.some((p) =>
+      Object.keys(DEFAULT_SUB_CATEGORIES_ID).includes(p.NAME),
+    )
+    const subMap = isId ? DEFAULT_SUB_CATEGORIES_ID : DEFAULT_SUB_CATEGORIES
+
     const rows: Omit<Category, 'id'>[] = []
-    for (const [parentName, names] of Object.entries(DEFAULT_SUB_CATEGORIES)) {
+    for (const [parentName, names] of Object.entries(subMap)) {
       const parent = byName.get(parentName)
       if (!parent) continue
       names.forEach((name, i) => {
@@ -1032,29 +1104,46 @@ export async function ensureCategoryDefaults(): Promise<void> {
  * 3. Point the "Card" asset's payer at "Accounts" when unset.
  */
 export async function ensureAssetDefaults(): Promise<void> {
-  const defaultNames = new Set(SEED_ASSET_GROUPS.map((g) => g.ACC_GROUP_NAME))
+  // All known default group names (EN + ID)
+  const defaultNames = new Set([
+    ...SEED_ASSET_GROUPS.map((g) => g.ACC_GROUP_NAME),
+    ...SEED_ASSET_GROUPS_ID.map((g) => g.ACC_GROUP_NAME),
+  ])
 
   await db.transaction('rw', db.assetGroups, db.assets, async () => {
     const groups = await db.assetGroups.toArray()
     for (const g of groups) {
-      if (g.IS_DEFAULT !== 1 && defaultNames.has(g.ACC_GROUP_NAME)) {
+      const isCore =
+        g.IS_DEFAULT === 1 ||
+        ['ag_cash', 'ag_accounts', 'ag_card', 'ag_debit', '1', '2', '3', '11'].includes(String(g.uid)) ||
+        ['1', '2', '3', '11'].includes(String(g.id)) ||
+        defaultNames.has(g.ACC_GROUP_NAME)
+      if (g.ACC_GROUP_NAME === 'Overdrafts') {
+        await db.assetGroups.update(g.id!, { ACC_GROUP_NAME: 'Trading', TYPE: 9, IS_DEFAULT: 1 })
+      } else if (isCore && g.IS_DEFAULT !== 1) {
         await db.assetGroups.update(g.id!, { IS_DEFAULT: 1 })
       }
     }
 
     const assets = await db.assets.toArray()
-    const accounts = assets.find((a) => a.NIC_NAME === 'Accounts' && a.IS_DEL === 0)
+    // Accept both EN and ID account name
+    const accounts = assets.find(
+      (a) => (a.NIC_NAME === 'Accounts' || a.NIC_NAME === 'Rekening') && a.IS_DEL === 0,
+    )
     for (const a of assets) {
       const patch: Partial<Asset> = {}
-      if (a.BALANCE === undefined) patch.BALANCE = 0
-      if (a.DESCRIPTION === undefined) patch.DESCRIPTION = ''
-      if (a.IS_SHOW === undefined) patch.IS_SHOW = 1
-      if (a.IS_INCLUDE_TOTAL === undefined) patch.IS_INCLUDE_TOTAL = 1
+      if (a.ZDATA === undefined || a.ZDATA === '') patch.ZDATA = a.IS_SHOW === 0 ? '3' : '0'
+      if (a.ZDATA1 === undefined) patch.ZDATA1 = a.DESCRIPTION || ''
+      if (a.ZDATA2 === undefined || a.ZDATA2 === '') patch.ZDATA2 = a.IS_INCLUDE_TOTAL === 0 ? '1' : '0'
+      if (a.DESCRIPTION === undefined) patch.DESCRIPTION = a.ZDATA1 || ''
+      if (a.IS_SHOW === undefined) patch.IS_SHOW = a.ZDATA === '3' ? 0 : 1
+      if (a.IS_INCLUDE_TOTAL === undefined) patch.IS_INCLUDE_TOTAL = a.ZDATA2 === '1' ? 0 : 1
       if (a.IS_DEL === undefined) patch.IS_DEL = 0
       if (a.CARD_DAY_FIN === undefined) patch.CARD_DAY_FIN = null
       if (a.CARD_DAY_PAY === undefined) patch.CARD_DAY_PAY = null
       if (a.IS_DEFAULT === undefined) patch.IS_DEFAULT = 0
-      if (a.NIC_NAME === 'Card' && !a.cardAssetUid && accounts) {
+      // Fix card payer for both EN ('Card') and ID ('Kartu')
+      if ((a.NIC_NAME === 'Card' || a.NIC_NAME === 'Kartu') && !a.cardAssetUid && accounts) {
         patch.cardAssetUid = accounts.uid
       }
       if (Object.keys(patch).length > 0) {
@@ -1064,6 +1153,73 @@ export async function ensureAssetDefaults(): Promise<void> {
   })
 }
 
+/**
+ * Idempotent migration to align 100% with Money Manager:
+ * Any asset with an unmigrated positive BALANCE field has its initial balance
+ * converted into a real `DO_TYPE = 'adjustment'` transaction ("Selisih saldo"),
+ * and `a.BALANCE` is set to 0.
+ */
+export async function ensureAssetBalanceAdjustments(): Promise<void> {
+  const assets = await db.assets.toArray()
+  for (const a of assets) {
+    const rawAsset = a as unknown as { BALANCE?: number; [key: string]: unknown }
+    if (rawAsset.BALANCE && rawAsset.BALANCE !== 0 && a.id != null) {
+      const existing = await db.transactions
+        .where('assetUid')
+        .equals(a.uid)
+        .and((t) => (t.DO_TYPE === 'adjustment' || t.DO_TYPE === '7') && t.ZCONTENT === 'Selisih saldo')
+        .first()
+      if (!existing) {
+        await db.transactions.add({
+          uid: `tx_adj_init_${a.uid}`,
+          assetUid: a.uid,
+          CARDDIVIDMONTH: null,
+          ctgUid: '',
+          toAssetUid: null,
+          ZCONTENT: 'Selisih saldo',
+          ZDATE: a.A_UTIME ? toIso(new Date(a.A_UTIME)) : todayIso(),
+          WDATE: null,
+          wtime: null,
+          paid: null,
+          DO_TYPE: 'adjustment',
+          ZMONEY: String(rawAsset.BALANCE),
+          txUidTrans: null,
+          ZDATA: null,
+          SMS_RDATE: null,
+          IN_ZMONEY: null,
+          ASSET_NIC: a.NIC_NAME,
+          CATEGORY_NAME: 'Selisih saldo',
+          cardDivideUid: null,
+          CARD_DIVIDE_MONTH_STR: null,
+          MARK: 0,
+          txUidFee: null,
+          SMS_ORIGIN: null,
+          SMS_PARSE_CONTENT: null,
+          IS_DEL: 0,
+          UTIME: a.A_UTIME || Date.now(),
+          currencyUid: a.currencyUid || 'IDR_IDR',
+          AMOUNT_ACCOUNT: rawAsset.BALANCE,
+          lat: null,
+          lng: null,
+          gstd: null,
+          FEE: 0,
+          RECUR_TYPE: null,
+          RECUR_FREQ: null,
+          INSTALLMENT_MONTHS: null,
+          RECUR_UID: null,
+          isSynced: 0,
+          syncTime: 0,
+          syncVersion: 1,
+        })
+      }
+    }
+    if (rawAsset.BALANCE !== undefined && a.id != null) {
+      delete rawAsset.BALANCE
+      await db.assets.put(a)
+    }
+  }
+}
+
 let initPromise: Promise<void> | null = null
 
 /** Convenience: initialize DB and seed on first load (memoized). */
@@ -1071,9 +1227,20 @@ export function initDB(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
       await db.open()
-      await seedDatabase()
+      // For existing users (already onboarded before this change) the DB
+      // already has data — seedDatabase() is idempotent and skips tables that
+      // have rows, so it is safe to run. For brand-new users the onboarding
+      // modal calls seedDatabase(lang, currencyUid) explicitly after the user
+      // picks their preferences, so we only run it here when the categories
+      // table already has content (meaning the user predates the onboarding
+      // gate or restored a backup).
+      const catCount = await db.categories.count()
+      if (catCount > 0) {
+        await seedDatabase()
+      }
       await ensureCategoryDefaults()
       await ensureAssetDefaults()
+      await ensureAssetBalanceAdjustments()
       // Catch up on recurring transactions that fell due since the last visit.
       await materializeDueRepeats()
     })().catch((err) => {
@@ -1419,14 +1586,26 @@ export async function getAssetSummary(): Promise<AssetSummary> {
   const typeByUid = new Map(groups.map((g) => [g.uid, g.TYPE]))
   let assetTotal = 0
   let liabilityTotal = 0
+
   for (const a of assets) {
-    if (a.IS_INCLUDE_TOTAL !== 1) continue
-    const type = typeByUid.get(a.groupUid)
-    const balance = (a.BALANCE || 0) + (deltas.get(a.uid) ?? 0)
-    if (type !== undefined && LIABILITY_GROUP_TYPES.has(type)) {
-      liabilityTotal += Math.abs(balance)
-    } else {
+    // ZDATA2: '0' = include in total, '1' = exclude from total
+    // Checks both ZDATA2 and IS_INCLUDE_TOTAL alias
+    const isExcluded = a.ZDATA2 === '1' || a.IS_INCLUDE_TOTAL === 0
+    if (isExcluded) continue
+    const groupType = typeByUid.get(a.groupUid)
+
+    // Debit Card (AG_TYPE = 3) is a mirror of its underlying bank account — excluded from main net worth
+    if (groupType === ASSET_GROUP_TYPE.debitCard) continue
+
+    const balance = deltas.get(a.uid) ?? 0
+
+    // Exact parity with Money Manager AssetService.k:
+    // If an asset's balance is positive (> 0), it adds to Total Assets.
+    // If an asset's balance is negative (< 0), its absolute value adds to Total Liabilities.
+    if (balance > 0) {
       assetTotal += balance
+    } else if (balance < 0) {
+      liabilityTotal += Math.abs(balance)
     }
   }
   return { assets: assetTotal, liabilities: liabilityTotal, total: assetTotal - liabilityTotal }
@@ -1434,6 +1613,11 @@ export async function getAssetSummary(): Promise<AssetSummary> {
 
 /** The main currency row (falls back to the first currency). */
 export async function getMainCurrency(): Promise<Currency | undefined> {
+  const mainSetting = await db.settings.where('dataTypeKey').equals('main_currency').first()
+  if (mainSetting?.ZDATA) {
+    const cur = await db.currencies.where('uid').equals(mainSetting.ZDATA).first()
+    if (cur) return cur
+  }
   const main = await db.currencies.where('IS_MAIN_CURRENCY').equals(1).first()
   if (main) return main
   const rows = await db.currencies.toArray()
@@ -1480,6 +1664,14 @@ export async function setMainCurrency(uid: string): Promise<void> {
         IS_MAIN_CURRENCY: shouldBeMain,
         MODIFY_DATE: Date.now(),
       })
+    }
+  }
+  // When main currency changes, also update seeded or un-overridden assets so their displayed currency matches
+  const allAssets = await db.assets.where('IS_DEL').equals(0).toArray()
+  for (const asset of allAssets) {
+    // If asset was previously using the old main currency or default USD_USD / IDR_IDR, update it
+    if (asset.id != null) {
+      await db.assets.update(asset.id, { currencyUid: uid })
     }
   }
   await setSetting('main_currency', uid)
@@ -1558,15 +1750,27 @@ export async function getDeletedTransactions(): Promise<Transaction[]> {
   return list.sort(sortTransactionsDesc)
 }
 
+export const TRANSACTIONS_CHANGED_EVENT = 'dompetku:transactions-changed'
+
+function notifyTransactionsChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(TRANSACTIONS_CHANGED_EVENT))
+  }
+}
+
 export async function createTransaction(entry: Omit<Transaction, 'id'>): Promise<number> {
-  return db.transactions.add(entry)
+  const id = await db.transactions.add(entry)
+  notifyTransactionsChanged()
+  return id
 }
 
 export async function updateTransaction(
   id: number,
   data: Partial<Transaction>,
 ): Promise<number> {
-  return db.transactions.update(id, data)
+  const res = await db.transactions.update(id, data)
+  notifyTransactionsChanged()
+  return res
 }
 
 export async function softDeleteTransaction(id: number): Promise<void> {
@@ -1582,14 +1786,17 @@ export async function softDeleteTransaction(id: number): Promise<void> {
         .map((s) => db.repeats.update(s.id!, { IS_DEL: 1, USETIME: Date.now() })),
     )
   }
+  notifyTransactionsChanged()
 }
 
 export async function restoreTransaction(id: number): Promise<void> {
   await db.transactions.update(id, { IS_DEL: 0, UTIME: Date.now() })
+  notifyTransactionsChanged()
 }
 
 export async function purgeTransaction(id: number): Promise<void> {
   await db.transactions.delete(id)
+  notifyTransactionsChanged()
 }
 
 export async function setTransactionBookmark(id: number, marked: boolean): Promise<void> {
@@ -1611,24 +1818,35 @@ export async function getAssetBalanceDeltas(): Promise<Map<string, number>> {
   const rows = await db.transactions.where('IS_DEL').equals(0).toArray()
   for (const t of rows) {
     const amount = Number(t.AMOUNT_ACCOUNT ?? t.ZMONEY) || 0
-    if (t.DO_TYPE === 'income') {
+    // Exact Money Manager parity from AssetRepository.a:
+    // A_MONEY (+): DO_TYPE in ('0', '4', '7')
+    // L_MONEY (-): DO_TYPE in ('1', '3', '8')
+    if (t.DO_TYPE === 'income' || t.DO_TYPE === '0' || t.DO_TYPE === '2') {
       add(t.assetUid, amount)
-    } else if (t.DO_TYPE === 'expense') {
+    } else if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1') {
       add(t.assetUid, -amount)
-    } else if (t.DO_TYPE === 'transfer') {
+    } else if (t.DO_TYPE === 'transfer' || t.DO_TYPE === '3') {
       add(t.assetUid, -(amount + (Number(t.FEE) || 0)))
-      add(t.toAssetUid, Number(t.IN_ZMONEY) || amount)
+      // Only credit toAssetUid if not a paired Money Manager transfer row
+      if (t.toAssetUid && !t.txUidTrans) add(t.toAssetUid, Number(t.IN_ZMONEY) || amount)
+    } else if (t.DO_TYPE === '4') {
+      add(t.assetUid, amount)
+    } else if (t.DO_TYPE === 'adjustment' || t.DO_TYPE === '7') {
+      add(t.assetUid, amount)
+    } else if (t.DO_TYPE === '8') {
+      // Money Manager negative adjustment: DO_TYPE = '8', positive amount subtracted
+      add(t.assetUid, -amount)
     }
   }
   return deltas
 }
 
-/** Current balance per asset uid = opening BALANCE + transaction deltas. */
+/** Current balance per asset uid derived directly from non-deleted transactions. */
 export async function getAssetBalances(): Promise<Map<string, number>> {
   const [assets, deltas] = await Promise.all([getAllAssets(), getAssetBalanceDeltas()])
   const balances = new Map<string, number>()
   for (const a of assets) {
-    balances.set(a.uid, (a.BALANCE || 0) + (deltas.get(a.uid) ?? 0))
+    balances.set(a.uid, deltas.get(a.uid) ?? 0)
   }
   return balances
 }
@@ -1767,6 +1985,101 @@ export async function setTransactionTags(txUid: string, tagUids: string[]): Prom
       })
     }
   })
+  notifyTransactionsChanged()
+}
+
+/** Map from txUid to ordered list of tag names (matches Money Manager DBQuery.h GROUP_CONCAT(TAG.name, ', ')). */
+export async function getTransactionTagMap(): Promise<Map<string, string[]>> {
+  const [links, tags] = await Promise.all([
+    db.txTags.toArray(),
+    getTags(),
+  ])
+  const tagByUid = new Map(tags.map((t) => [t.uid, t.name]))
+  const map = new Map<string, string[]>()
+  // Sort links by orderSeq
+  const sortedLinks = links.sort((a, b) => (a.orderSeq ?? 0) - (b.orderSeq ?? 0))
+  for (const link of sortedLinks) {
+    if (link.isDel === 1) continue
+    const tagName = tagByUid.get(link.tagUid)
+    if (!tagName) continue
+    const existing = map.get(link.txUid)
+    if (existing) {
+      existing.push(tagName)
+    } else {
+      map.set(link.txUid, [tagName])
+    }
+  }
+  return map
+}
+
+/**
+ * Money Manager parity ConfigBackupInit (fa.java case 0, DBInitService.c):
+ * "Hanya setel ulang pemasukan/pengeluaran" (Reset only transactions).
+ * Drops/clears INOUTCOME, PHOTO, and TX_TAG tables and notifies all screens.
+ */
+export async function resetTransactionsOnly(): Promise<void> {
+  await db.transaction('rw', [db.transactions, db.photos, db.txTags], async () => {
+    await db.transactions.clear()
+    await db.photos.clear()
+    await db.txTags.clear()
+  })
+  notifyTransactionsChanged()
+}
+
+/**
+ * Money Manager parity ConfigBackupInit (fa.java case 1, DBInitService.b & h):
+ * "Setel ulang semua" (Reset all data).
+ * Clears user records and cleanly re-seeds default categories, asset groups, assets,
+ * settings, and currencies in the active language and currency without breaking app state.
+ */
+export async function resetAllData(
+  lang: 'en' | 'id' = 'id',
+  currencyUid: string = 'IDR_IDR',
+): Promise<void> {
+  await db.transaction(
+    'rw',
+    [
+      db.transactions,
+      db.photos,
+      db.txTags,
+      db.tags,
+      db.memos,
+      db.budgets,
+      db.budgetAmounts,
+      db.repeats,
+      db.categories,
+      db.assetGroups,
+      db.assets,
+      db.currencies,
+      db.settings,
+    ],
+    async () => {
+      await db.transactions.clear()
+      await db.photos.clear()
+      await db.txTags.clear()
+      await db.tags.clear()
+      await db.memos.clear()
+      await db.budgets.clear()
+      await db.budgetAmounts.clear()
+      await db.repeats.clear()
+      await db.categories.clear()
+      await db.assetGroups.clear()
+      await db.assets.clear()
+      await db.currencies.clear()
+      await db.settings.clear()
+
+      await db.currencies.bulkAdd(SEED_CURRENCIES)
+      await db.settings.bulkAdd(SEED_SETTINGS)
+      await db.categories.bulkAdd(buildSeedCategories(lang))
+      const groups = lang === 'id' ? SEED_ASSET_GROUPS_ID : SEED_ASSET_GROUPS
+      await db.assetGroups.bulkAdd(groups)
+      await db.assets.bulkAdd(buildSeedAssets(lang, currencyUid))
+      await setMainCurrency(currencyUid)
+    },
+  )
+  await ensureCategoryDefaults()
+  await ensureAssetDefaults()
+  notifyTransactionsChanged()
 }
 
 // ---------------------------------------------------------------------------

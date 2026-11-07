@@ -42,8 +42,11 @@ const TYPE_OPTIONS: { value: number; label: string }[] = [
   { value: ASSET_GROUP_TYPE.debitCard, label: 'Grup aset kartu debit' },
 ]
 
-const isCoreGroup = (name: string) => CORE_ASSET_GROUP_NAMES.includes(name)
-
+const isCoreGroup = (group: AssetGroup) =>
+  group.IS_DEFAULT === 1 ||
+  ['ag_cash', 'ag_accounts', 'ag_card', 'ag_debit', '1', '2', '3', '11'].includes(String(group.uid)) ||
+  ['1', '2', '3', '11'].includes(String(group.id)) ||
+  CORE_ASSET_GROUP_NAMES.includes(group.ACC_GROUP_NAME)
 export function AssetGroupManager() {
   const router = useRouter()
   const { t } = useTranslation()
@@ -110,7 +113,13 @@ export function AssetGroupManager() {
           syncVersion: 1,
         })
       } else if (editingId !== null) {
-        await updateAssetGroup(editingId, { ACC_GROUP_NAME: trimmed, TYPE: formType })
+        const existing = groups.find((g) => g.id === editingId)
+        const isCore = existing ? isCoreGroup(existing) : false
+        await updateAssetGroup(editingId, {
+          ACC_GROUP_NAME: trimmed,
+          TYPE: formType,
+          ...(isCore ? { IS_DEFAULT: 1 } : {}),
+        })
       }
       closeForm()
       await load()
@@ -181,7 +190,7 @@ export function AssetGroupManager() {
         ) : (
           <div className="space-y-1">
             {groups.map((group, index) => {
-              const core = isCoreGroup(group.ACC_GROUP_NAME)
+              const core = isCoreGroup(group)
               const isSelected = selected.has(group.id!)
               const translation = ASSET_GROUP_TRANSLATIONS[group.ACC_GROUP_NAME]
               return (

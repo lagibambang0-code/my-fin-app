@@ -15,7 +15,7 @@ import { TransactionForm, type TransactionDraft } from '@/components/transaction
 import { TransactionsEmpty, type Lookups } from '@/components/transaction-list'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/components/language-provider'
-import { formatCurrency, formatShortDate } from '@/lib/format'
+import { formatCurrency, formatShortDate, todayIso } from '@/lib/format'
 import { summarize } from '@/lib/transaction-utils'
 import {
   STATS_MODES,
@@ -26,6 +26,7 @@ import {
   categoryTrend,
   getLineChartPoints,
   initialStatsState,
+  matchesStatsType,
   reportingCategoryUid,
   shiftStatsState,
   statsRange,
@@ -119,8 +120,17 @@ export function StatistikScreen() {
       if (cur) setCurrency(cur)
       void load()
     }
+    const onTransactionsChanged = () => {
+      void load()
+    }
     window.addEventListener('dompetku:currency-changed', onCurrencyChanged)
-    return () => window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
+    window.addEventListener('dompetku:transactions-changed', onTransactionsChanged)
+    window.addEventListener('dompetku:settings-changed', onTransactionsChanged)
+    return () => {
+      window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
+      window.removeEventListener('dompetku:transactions-changed', onTransactionsChanged)
+      window.removeEventListener('dompetku:settings-changed', onTransactionsChanged)
+    }
   }, [load])
 
   const categoryMap = useMemo(
@@ -170,7 +180,7 @@ export function StatistikScreen() {
     () =>
       detailUid
         ? rangeRows.filter(
-            (tx) => tx.DO_TYPE === type && reportingCategoryUid(tx, categoryMap) === detailUid,
+            (tx) => matchesStatsType(tx.DO_TYPE, type) && reportingCategoryUid(tx, categoryMap) === detailUid,
           )
         : [],
     [rangeRows, detailUid, type, categoryMap],
@@ -193,7 +203,7 @@ export function StatistikScreen() {
   const detailTrend = useMemo(() => {
     if (!detailUid) return []
     const rows = all.filter(
-      (tx) => tx.DO_TYPE === type && reportingCategoryUid(tx, categoryMap) === detailUid,
+      (tx) => matchesStatsType(tx.DO_TYPE, type) && reportingCategoryUid(tx, categoryMap) === detailUid,
     )
     return categoryTrend(rows, trendMonths(state))
   }, [all, detailUid, type, categoryMap, state])
@@ -203,6 +213,36 @@ export function StatistikScreen() {
   const openEdit = (tx: Transaction) => {
     setEditing(tx)
     setCopyDraft(null)
+    setFormKey((key) => key + 1)
+    setFormOpen(true)
+  }
+
+  const openAdd = (targetDate: string, categoryUid?: string, categoryName?: string) => {
+    setEditing(null)
+    const today = todayIso()
+    const isPast = targetDate < today
+    const now = new Date()
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    setCopyDraft({
+      type: type === 'income' ? 'income' : 'expense',
+      date: targetDate,
+      time: isPast ? '20:55' : currentTime,
+      amount: 0,
+      categoryUid: categoryUid ?? null,
+      categoryName: categoryName ?? null,
+      assetUid: null,
+      assetName: null,
+      toAssetUid: null,
+      toAssetName: null,
+      fee: 0,
+      note: '',
+      description: '',
+      mark: false,
+      tagUids: [],
+      recurType: null,
+      recurFreq: null,
+      installmentMonths: null,
+    })
     setFormKey((key) => key + 1)
     setFormOpen(true)
   }
@@ -541,6 +581,7 @@ export function StatistikScreen() {
         lookups={lookups}
         onClose={() => setDetailUid(null)}
         onOpenTransaction={openEdit}
+        onAddDate={(dateIso) => openAdd(dateIso, selected?.uid, selected?.name)}
       />
 
       <BookmarkScreen

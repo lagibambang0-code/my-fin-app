@@ -21,7 +21,7 @@ import {
   MODE_STORAGE_KEY,
   PALETTE_STORAGE_KEY,
 } from '@/components/theme-settings'
-import { getMainCurrency, setMainCurrency } from '@/lib/db'
+import { seedDatabase, ensureCategoryDefaults, ensureAssetDefaults, materializeDueRepeats, getMainCurrency } from '@/lib/db'
 import { cn } from '@/lib/utils'
 
 export const ONBOARDING_STORAGE_KEY = 'dompetku:onboarded'
@@ -72,14 +72,8 @@ export function OnboardingModal() {
     }
   }, [])
 
-  const handleCurrencySelect = async (uid: string) => {
+  const handleCurrencySelect = (uid: string) => {
     setSelectedCurrency(uid)
-    try {
-      // Terapkan mata uang langsung seketika
-      await setMainCurrency(uid)
-    } catch (err) {
-      console.warn('Gagal mengubah mata uang utama:', err)
-    }
   }
 
   const handleThemeChange = (nextMode: ThemeMode, nextPalette: ThemePalette) => {
@@ -95,7 +89,13 @@ export function OnboardingModal() {
   const handleFinish = async () => {
     setSaving(true)
     try {
-      await setMainCurrency(selectedCurrency)
+      // Seed the database with locale-aware defaults chosen by the user.
+      // seedDatabase() is idempotent — it skips any table that already has rows,
+      // so calling it here on a fresh DB is the first and only seed.
+      await seedDatabase(language as 'en' | 'id', selectedCurrency)
+      await ensureCategoryDefaults()
+      await ensureAssetDefaults()
+      await materializeDueRepeats()
       localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true')
       setOpen(false)
     } catch (err) {

@@ -78,6 +78,7 @@ import {
 export type TransactionDraft = {
   type: TrxType
   date: string
+  time?: string | null
   amount: number
   categoryUid: string | null
   categoryName: string | null
@@ -226,16 +227,25 @@ export function TransactionForm({
     if (!open) return
     let active = true
     const source = transaction ?? null
-
-    setType((source?.DO_TYPE as TrxType) ?? initial?.type ?? 'expense')
-    setDate(source?.ZDATE ?? initial?.date ?? todayIso())
+    const rawDoType = source?.DO_TYPE
+    const resolvedType: TrxType =
+      rawDoType === '0' || rawDoType === 'income'
+        ? 'income'
+        : rawDoType === '3' || rawDoType === '4' || rawDoType === 'transfer'
+        ? 'transfer'
+        : rawDoType === '1' || rawDoType === 'expense'
+        ? 'expense'
+        : (rawDoType as TrxType) ?? initial?.type ?? 'expense'
+    setType(resolvedType)
+    const targetDate = source?.ZDATE ?? initial?.date ?? todayIso()
+    setDate(targetDate)
+    const today = todayIso()
+    const now = new Date()
+    const currentRealTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
     setTime(
       source?.wtime
         ? source.wtime.slice(0, 5)
-        : (() => {
-            const now = new Date()
-            return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-          })(),
+        : ((initial as { time?: string })?.time ?? (targetDate < today ? '20:55' : currentRealTime)),
     )
     const startMoney = source ? Number(source.ZMONEY) || 0 : (initial?.amount ?? 0)
     setRaw(startMoney !== 0 ? String(Math.abs(startMoney)) : '')
@@ -302,7 +312,7 @@ export function TransactionForm({
       assets.map((asset) => ({
         value: asset.uid,
         label: asset.NIC_NAME,
-        trailing: formatCurrency(balances.get(asset.uid) ?? asset.BALANCE, currency),
+        trailing: formatCurrency(balances.get(asset.uid) ?? 0, currency),
       })),
     [assets, balances, currency],
   )
@@ -356,7 +366,7 @@ export function TransactionForm({
         ZDATA: description || null,
         MARK: mark ? 1 : 0,
         ASSET_NIC: assetName,
-        CATEGORY_NAME: type === 'transfer' ? null : categoryLabel,
+        CATEGORY_NAME: type === 'transfer' ? 'Transfer' : categoryLabel,
         RECUR_TYPE: recur.recurType,
         RECUR_FREQ: recur.recurFreq,
         INSTALLMENT_MONTHS: recur.installmentMonths,
@@ -381,7 +391,7 @@ export function TransactionForm({
         SMS_RDATE: null,
         IN_ZMONEY: type === 'transfer' ? String(amount) : null,
         ASSET_NIC: assetName,
-        CATEGORY_NAME: type === 'transfer' ? null : categoryLabel,
+        CATEGORY_NAME: type === 'transfer' ? 'Transfer' : categoryLabel,
         cardDivideUid: null,
         CARD_DIVIDE_MONTH_STR: null,
         MARK: mark ? 1 : 0,
@@ -432,9 +442,12 @@ export function TransactionForm({
     }
 
     await setTransactionTags(uid, tagUids)
-
     if (keepOpen) {
-      // Simpan & Lanjut: keep type + date + asset, clear the entry itself.
+      // Simpan & Lanjut:
+      // Update time to current time for the next transaction, while keeping date, type, asset, and toAsset
+      const now = new Date()
+      setTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`)
+
       setRaw('')
       setNegative(false)
       setNumpadOpen(true)
@@ -473,7 +486,7 @@ export function TransactionForm({
   }
 
   const title =
-    type === 'income' ? 'Pendapatan' : type === 'transfer' ? 'Transfer' : 'Pengeluaran'
+    type === 'income' ? t.transaction.income : type === 'transfer' ? t.transaction.transfer : t.transaction.expense
   const dateValue = fromIso(date)
   const weekday = WEEKDAYS_SHORT[dateValue.getDay()]
   const relative = relativeDateLabel(date)
@@ -642,7 +655,7 @@ export function TransactionForm({
                 icon={<Wallet aria-hidden="true" className="size-4" />}
                 label={t.transaction.account}
                 value={assetName}
-                placeholder="Pilih aset"
+                placeholder={t.transaction.selectAccount}
                 onAction={() => setAssetPicker('from')}
               />
             </div>
@@ -665,7 +678,7 @@ export function TransactionForm({
                 icon={<Wallet aria-hidden="true" className="size-4" />}
                 label={t.transaction.fromAccount}
                 value={assetName}
-                placeholder="Pilih aset"
+                placeholder={t.transaction.selectAccount}
                 onAction={() => setAssetPicker('from')}
               />
               <FieldRow
@@ -674,7 +687,7 @@ export function TransactionForm({
                 icon={<Wallet aria-hidden="true" className="size-4" />}
                 label={t.transaction.toAccount}
                 value={toAssetName}
-                placeholder="Pilih aset"
+                placeholder={t.transaction.selectAccount}
                 onAction={() => setAssetPicker('to')}
               />
             </div>
@@ -687,7 +700,7 @@ export function TransactionForm({
                 <PencilLine aria-hidden="true" className="size-3.5" />
               </span>
               <label htmlFor="trx-note-input" className="shrink-0 text-sm text-muted-foreground">
-                Catatan
+                {t.transaction.note}
               </label>
               <input
                 id="trx-note-input"
@@ -695,7 +708,7 @@ export function TransactionForm({
                 data-testid="trx-note-input"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Catatan singkat"
+                placeholder={t.transaction.note}
                 className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
@@ -707,7 +720,7 @@ export function TransactionForm({
                 htmlFor="trx-description-input"
                 className="shrink-0 pt-1 text-sm text-muted-foreground"
               >
-                Deskripsi
+                {t.transaction.description}
               </label>
               <textarea
                 id="trx-description-input"
@@ -715,7 +728,7 @@ export function TransactionForm({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
-                placeholder="Deskripsi"
+                placeholder={t.transaction.description}
                 className="min-w-0 flex-1 resize-none rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
@@ -737,7 +750,7 @@ export function TransactionForm({
                     tagLabel ? 'font-semibold text-foreground' : 'text-muted-foreground',
                   )}
                 >
-                  {tagLabel ?? 'Pilih tag'}
+                  {tagLabel ?? t.transaction.selectTag}
                 </span>
                 <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
@@ -851,33 +864,49 @@ export function TransactionForm({
       <div className="border-t bg-card/80 px-3 pt-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
         <div className="mx-auto w-full max-w-lg">
           {/* Total display — always visible, tap to reopen numpad */}
-          <button
-            type="button"
-            aria-label="Buka papan angka"
-            onClick={() => setNumpadOpen(true)}
-            className="mb-2 flex w-full items-end justify-between gap-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <div className="min-w-0">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Total
-              </p>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span
-                  className="rounded-lg bg-secondary/60 px-2 py-0.5 text-xs font-semibold tabular-nums"
-                  data-testid="trx-currency-label"
-                  title={`Mata uang utama: ${currency?.ISO ?? 'IDR'}`}
-                >
-                  {currency?.SYMBOL ?? 'Rp'}
-                </span>
-                <p
-                  className="min-w-0 truncate text-2xl leading-none font-bold tabular-nums md:text-3xl"
-                  data-testid="trx-amount-display"
-                >
-                  {(negative && Number(raw) > 0 ? '-' : '') + formatTypingAmount(raw, currency)}
+          <div className="mb-2 flex w-full items-end justify-between gap-2">
+            <button
+              type="button"
+              aria-label="Buka papan angka"
+              onClick={() => setNumpadOpen(true)}
+              className="flex min-w-0 flex-1 items-end gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Total
                 </p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span
+                    className="rounded-lg bg-secondary/60 px-2 py-0.5 text-xs font-semibold tabular-nums"
+                    data-testid="trx-currency-label"
+                    title={`Mata uang utama: ${currency?.ISO ?? 'IDR'}`}
+                  >
+                    {currency?.SYMBOL ?? 'Rp'}
+                  </span>
+                  <p
+                    className="min-w-0 truncate text-2xl leading-none font-bold tabular-nums md:text-3xl"
+                    data-testid="trx-amount-display"
+                  >
+                    {(negative && Number(raw) > 0 ? '-' : '') + formatTypingAmount(raw, currency)}
+                  </p>
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
+
+            {type === 'transfer' && (
+              <Button
+                type="button"
+                variant={fee > 0 ? 'secondary' : 'outline'}
+                size="sm"
+                data-testid="trx-quick-fee-btn"
+                onClick={() => setFeeSheetOpen(true)}
+                className="h-8 gap-1.5 text-xs font-medium shrink-0"
+              >
+                <Coins className="size-3.5 text-muted-foreground" />
+                <span>{fee > 0 ? `Biaya: ${formatCurrency(fee, currency)}` : '+ Biaya'}</span>
+              </Button>
+            )}
+          </div>
 
           {numpadOpen && (
             <Numpad

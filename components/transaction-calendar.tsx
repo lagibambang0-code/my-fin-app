@@ -19,17 +19,25 @@ export function TransactionCalendar({
   transactions,
   lookups,
   onOpen,
+  weekStartDay = 1,
 }: {
   year: number
   month: number
   transactions: Transaction[]
   lookups: Lookups
   onOpen: (tx: Transaction) => void
+  weekStartDay?: number
 }) {
   const { t, language } = useTranslation()
-  const weekHeaders = language === 'en'
-    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    : ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']
+  const baseHeaders = useMemo(() => (
+    language === 'en'
+      ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      : ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
+  ), [language])
+  const weekHeaders = useMemo(() => [
+    ...baseHeaders.slice(weekStartDay),
+    ...baseHeaders.slice(0, weekStartDay),
+  ], [baseHeaders, weekStartDay])
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const totals = useMemo(() => totalsByDate(transactions), [transactions])
   const summary = useMemo(() => summarize(transactions), [transactions])
@@ -37,14 +45,13 @@ export function TransactionCalendar({
   const cells = useMemo(() => {
     const first = new Date(year, month, 1)
     const daysInMonth = new Date(year, month + 1, 0).getDate()
-    // Monday-first offset: Sunday (0) becomes index 6.
-    const offset = (first.getDay() + 6) % 7
+    const offset = (first.getDay() - weekStartDay + 7) % 7
     const list: (string | null)[] = Array.from({ length: offset }, () => null)
     for (let day = 1; day <= daysInMonth; day += 1) {
       list.push(toIso(new Date(year, month, day)))
     }
     return list
-  }, [year, month])
+  }, [year, month, weekStartDay])
 
   const selectedRows = useMemo(
     () => (selectedDay ? transactions.filter((tx) => tx.ZDATE === selectedDay) : []),

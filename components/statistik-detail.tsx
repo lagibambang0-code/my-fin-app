@@ -33,6 +33,7 @@ type StatistikDetailProps = {
   lookups: Lookups
   onClose: () => void
   onOpenTransaction: (tx: Transaction) => void
+  onAddDate?: (dateIso: string) => void
 }
 
 /**
@@ -52,6 +53,7 @@ export function StatistikDetail({
   lookups,
   onClose,
   onOpenTransaction,
+  onAddDate,
 }: StatistikDetailProps) {
   const { t, language } = useTranslation()
   if (!open || !stat) return null
@@ -104,23 +106,27 @@ export function StatistikDetail({
               currency={lookups.currency}
               emphasis
             />
-            {subStats.map((sub) => (
+            {subStats
+              .filter((sub) => sub.amount > 0)
+              .map((sub) => (
+                <SubRow
+                  key={sub.uid}
+                  testId={`stats-detail-sub-${sub.uid}`}
+                  name={sub.name}
+                  percent={sub.percent}
+                  amount={sub.amount}
+                  currency={lookups.currency}
+                />
+              ))}
+            {restAmount > 0 && (
               <SubRow
-                key={sub.uid}
-                testId={`stats-detail-sub-${sub.uid}`}
-                name={sub.name}
-                percent={sub.percent}
-                amount={sub.amount}
+                testId="stats-detail-sub-rest"
+                name={t.stats.detail.other}
+                percent={restPercent}
+                amount={restAmount}
                 currency={lookups.currency}
               />
-            ))}
-            <SubRow
-              testId="stats-detail-sub-rest"
-              name={t.stats.detail.other}
-              percent={restPercent}
-              amount={restAmount}
-              currency={lookups.currency}
-            />
+            )}
           </div>
           {/* Grafik Garis Kategori yang Mengikuti Filter Mode yang Dipilih */}
           {linePoints ? (
@@ -147,6 +153,7 @@ export function StatistikDetail({
                 transactions={rows}
                 lookups={lookups}
                 onOpen={onOpenTransaction}
+                onAddDate={onAddDate}
               />
             )}
           </section>

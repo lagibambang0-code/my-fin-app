@@ -171,16 +171,25 @@ export function GeneralSettingsScreen() {
   const saveCurrency = useCallback(async (uid: string) => {
     setCurrencyUid(uid)
     await setMainCurrency(uid)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dompetku:settings-changed'))
+    }
   }, [])
 
   const saveWeek = useCallback(async (v: string) => {
     setWeekStart(v)
     await setSetting('week_start_day', v)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dompetku:settings-changed'))
+    }
   }, [])
 
   const saveMonth = useCallback(async (v: string) => {
     setMonthStart(v)
     await setSetting('start_day', v)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dompetku:settings-changed'))
+    }
   }, [])
 
   /* ── derived display values ── */

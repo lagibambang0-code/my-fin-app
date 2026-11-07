@@ -287,10 +287,16 @@ async function swipe(page, deltaX) {
 }
 
 async function gotoTransaksi(page) {
-  await page.goto(`${BASE}/transaksi`, { waitUntil: 'networkidle0' })
+  await page.goto(`${BASE}/transaksi`, { waitUntil: 'networkidle2' })
+  const onboarding = await page.waitForSelector('[data-testid="onboarding-submit"]', { timeout: 3000 }).catch(() => null)
+  if (onboarding) {
+    const enBtn = await page.$('[data-testid="onboarding-lang-en"]')
+    if (enBtn) await enBtn.click()
+    await onboarding.click()
+    await waitGone(page, '[data-testid="onboarding-modal"]')
+  }
   await waitFor(page, '[data-testid="trx-summary"]')
 }
-
 /** Open the FAB form and set the amount. */
 async function openForm(page, keys = []) {
   await click(page, '[data-testid="trx-fab"]')

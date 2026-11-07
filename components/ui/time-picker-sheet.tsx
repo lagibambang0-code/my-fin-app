@@ -39,23 +39,36 @@ interface DrumColumnProps {
 
 function DrumColumn({ items, selected, onChange, label }: DrumColumnProps) {
   const trackRef = useRef<HTMLDivElement>(null)
+  const isScrollingRef = useRef(false)
 
   /* Scroll the track so the selected item centres itself. */
   useEffect(() => {
     const el = trackRef.current
     if (!el) return
-    el.scrollTo({ top: selected * CELL_H, behavior: 'smooth' })
+    isScrollingRef.current = true
+    const rafId = requestAnimationFrame(() => {
+      if (trackRef.current) {
+        trackRef.current.scrollTop = selected * CELL_H
+      }
+    })
+    const timer = setTimeout(() => {
+      isScrollingRef.current = false
+    }, 200)
+    return () => {
+      cancelAnimationFrame(rafId)
+      clearTimeout(timer)
+    }
   }, [selected])
 
   /* On scroll end, snap to the nearest item and fire onChange. */
   const onScroll = useCallback(() => {
+    if (isScrollingRef.current) return
     const el = trackRef.current
     if (!el) return
     const idx = Math.round(el.scrollTop / CELL_H)
     const clamped = Math.max(0, Math.min(items.length - 1, idx))
     if (clamped !== selected) onChange(clamped)
   }, [items.length, selected, onChange])
-
   return (
     <div className="flex flex-1 flex-col items-center gap-1.5">
       <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -88,7 +101,7 @@ function DrumColumn({ items, selected, onChange, label }: DrumColumnProps) {
           role="listbox"
           aria-label={label}
           style={{ height: DRUM_H }}
-          className="overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-y snap-mandatory"
+          className="overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-y snap-mandatory"
         >
           {/* Top padding so index 0 centres */}
           <div style={{ height: CELL_H * VISIBLE_SIDE }} aria-hidden="true" />
@@ -142,8 +155,9 @@ function parseTime(v: string): [number, number] {
 }
 
 export function TimePickerSheet({ open, value, onSelect, onClose }: TimePickerSheetProps) {
-  const [hour, setHour] = useState(0)
-  const [minute, setMinute] = useState(0)
+  const [initialH, initialM] = parseTime(value)
+  const [hour, setHour] = useState(initialH)
+  const [minute, setMinute] = useState(initialM)
 
   /* Sync local state whenever sheet opens or external value changes. */
   useEffect(() => {

@@ -186,6 +186,12 @@ export function formatPercent(percent: number, decimals = 0): string {
  * Per-category totals for one report kind, largest first. Transfers are never
  * part of a Pendapatan/Pengeluaran report.
  */
+export function matchesStatsType(doType: string, type: 'income' | 'expense'): boolean {
+  if (type === 'income') return doType === 'income' || doType === '0' || doType === '2'
+  if (type === 'expense') return doType === 'expense' || doType === '1'
+  return false
+}
+
 export function categoryBreakdown(
   rows: Transaction[],
   type: 'income' | 'expense',
@@ -194,7 +200,7 @@ export function categoryBreakdown(
   const buckets = new Map<string, { uid: string; name: string; amount: number }>()
 
   for (const tx of rows) {
-    if (tx.DO_TYPE !== type) continue
+    if (!matchesStatsType(tx.DO_TYPE, type)) continue
     const uid = reportingCategoryUid(tx, categories)
     const bucket = buckets.get(uid) ?? {
       uid,
@@ -333,7 +339,7 @@ export function calculateAverages(
   // Rata-rata asli = total / jumlah hari unik yang benar-benar ada transaksi
   const uniqueDates = new Set(
     rows
-      .filter((tx) => tx.DO_TYPE === type && amountOf(tx) > 0)
+      .filter((tx) => matchesStatsType(tx.DO_TYPE, type) && amountOf(tx) > 0)
       .map((tx) => tx.ZDATE),
   )
   const activeDays = uniqueDates.size
@@ -365,7 +371,7 @@ export function getLineChartPoints(
 
   // Filter transaksi yang sesuai jenis dan kategori (jika categoryUid diberikan)
   const matchingRows = rows.filter((tx) => {
-    if (tx.DO_TYPE !== type) return false
+    if (!matchesStatsType(tx.DO_TYPE, type)) return false
     if (categoryUid && categories) {
       return reportingCategoryUid(tx, categories) === categoryUid
     }

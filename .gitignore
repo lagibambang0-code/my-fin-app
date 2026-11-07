@@ -25,3 +25,6 @@ AGENTS.md
 test-results/
 # TypeScript build info
 tsconfig.tsbuildinfo
+
+# Decompiled APK sources for parity audit (never commit)
+tests/apk/

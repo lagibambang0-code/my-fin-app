@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, MoreVertical, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MoreVertical, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/components/language-provider'
 import { Overlay } from '@/components/ui/overlay'
 import { AssetForm } from '@/components/asset-form'
 import { AssetReorderScreen } from '@/components/asset-reorder-screen'
 import { AssetVisibilityScreen } from '@/components/asset-visibility-screen'
+import { AssetDeleteScreen } from '@/components/asset-delete-screen'
 import {
   type Asset,
   type AssetGroup,
@@ -36,6 +37,7 @@ export function AssetSettingsList() {
   const [formGroupUid, setFormGroupUid] = useState<string | null>(null)
   const [reorderOpen, setReorderOpen] = useState(false)
   const [visibilityOpen, setVisibilityOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const load = useCallback(async () => {
     const [g, a, main, balanceMap] = await Promise.all([
@@ -149,7 +151,7 @@ export function AssetSettingsList() {
                       <span className="min-w-0 flex-1 truncate text-sm">{asset.NIC_NAME}</span>
                       <span className="shrink-0 text-sm text-muted-foreground tabular-nums">
                         {formatCurrency(
-                          balances.get(asset.uid) ?? asset.BALANCE ?? 0,
+                          balances.get(asset.uid) ?? 0,
                           currencyMap[asset.currencyUid] ?? mainCurrency,
                         )}
                       </span>
@@ -193,6 +195,18 @@ export function AssetSettingsList() {
           </button>
           <button
             type="button"
+            data-testid="asset-settings-menu-delete"
+            onClick={() => {
+              setMenuOpen(false)
+              setDeleteOpen(true)
+            }}
+            className="flex w-full items-center gap-3 border-b px-4 py-3.5 text-left text-sm hover:bg-secondary"
+          >
+            <Trash2 className="size-4" />
+            {t.asset.menuDelete}
+          </button>
+          <button
+            type="button"
             data-testid="asset-settings-menu-reorder"
             onClick={() => {
               setMenuOpen(false)
@@ -208,13 +222,18 @@ export function AssetSettingsList() {
 
       {formOpen && (
         <AssetForm
+          key={editing?.id ?? 'new'}
           open
           asset={editing}
-          initialBalance={editing ? (balances.get(editing.uid) ?? editing.BALANCE) : 0}
+          initialBalance={editing ? (balances.get(editing.uid) ?? 0) : 0}
           groups={groups}
           initialGroupUid={formGroupUid}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
+            setFormOpen(false)
+            load()
+          }}
+          onDeleted={() => {
             setFormOpen(false)
             load()
           }}
@@ -224,6 +243,12 @@ export function AssetSettingsList() {
       <AssetReorderScreen
         open={reorderOpen}
         onClose={() => setReorderOpen(false)}
+        onChanged={load}
+      />
+
+      <AssetDeleteScreen
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
         onChanged={load}
       />
 

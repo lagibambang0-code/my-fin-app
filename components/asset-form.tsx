@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
+  ASSET_GROUP_TYPE,
   type Asset,
   type AssetGroup,
   type Currency,
@@ -18,6 +19,8 @@ import {
   db,
   getMaxAssetOrderSeq,
   getMainCurrency,
+  getAssetBalances,
+  getAssetByUid,
   softDeleteAsset,
   updateAsset,
 } from '@/lib/db'
@@ -62,15 +65,17 @@ export function AssetForm({
   const [groupUid, setGroupUid] = useState(
     () => asset?.groupUid ?? initialGroupUid ?? groups[0]?.uid ?? '',
   )
-  const currentTotal = useMemo(() => {
-    return initialBalance !== undefined ? initialBalance : (asset?.BALANCE ?? 0)
-  }, [initialBalance, asset])
+  const [currentTotal, setCurrentTotal] = useState(initialBalance ?? 0)
   const [name, setName] = useState(() => asset?.NIC_NAME ?? '')
-  const [balanceText, setBalanceText] = useState(() => String(currentTotal))
-  const [description, setDescription] = useState(() => asset?.DESCRIPTION ?? '')
+  const [balanceText, setBalanceText] = useState(() => String(initialBalance ?? 0))
+  const [description, setDescription] = useState(() => asset?.ZDATA1 || asset?.DESCRIPTION || '')
   const [currencyUid, setCurrencyUid] = useState(() => asset?.currencyUid ?? '')
-  const [includeTotal, setIncludeTotal] = useState(() => (asset?.IS_INCLUDE_TOTAL ?? 1) === 1)
-  const [isShow, setIsShow] = useState(() => (asset?.IS_SHOW ?? 1) === 1)
+  const [includeTotal, setIncludeTotal] = useState(() =>
+    asset ? (asset.ZDATA2 ? asset.ZDATA2 !== '1' : (asset.IS_INCLUDE_TOTAL ?? 1) === 1) : true,
+  )
+  const [isShow, setIsShow] = useState(() =>
+    asset ? (asset.ZDATA ? asset.ZDATA !== '3' : (asset.IS_SHOW ?? 1) === 1) : true,
+  )
   const [payUid, setPayUid] = useState<string | null>(() => asset?.cardAssetUid ?? null)
   const [settleDay, setSettleDay] = useState(() => String(asset?.CARD_DAY_FIN ?? 1))
   const [paymentDay, setPaymentDay] = useState(() => String(asset?.CARD_DAY_PAY ?? 1))
@@ -83,38 +88,66 @@ export function AssetForm({
     trimmedName: string
     parsedAmount: number
     cardFields: Record<string, unknown>
+    isNew?: boolean
   } | null>(null)
   const [currencies, setCurrencies] = useState<Currency[]>([])
   const [mainCurrency, setMainCurrency] = useState<Currency | null>(null)
   const [allAssets, setAllAssets] = useState<Asset[]>([])
 
-  // Only load the reference data the pickers need; user-editable fields are
-  // already initialised above and must never be overwritten here.
   useEffect(() => {
     if (!open) return
+    setName(asset?.NIC_NAME ?? '')
+    setBalanceText(asset ? String(initialBalance ?? 0) : '0')
+    setDescription(asset?.ZDATA1 || asset?.DESCRIPTION || '')
+    setGroupUid(asset?.groupUid ?? initialGroupUid ?? groups[0]?.uid ?? '')
+    setCurrencyUid(asset?.currencyUid ?? '')
+    setIncludeTotal(
+      asset ? (asset.ZDATA2 ? asset.ZDATA2 !== '1' : (asset.IS_INCLUDE_TOTAL ?? 1) === 1) : true,
+    )
+    setIsShow(
+      asset ? (asset.ZDATA ? asset.ZDATA !== '3' : (asset.IS_SHOW ?? 1) === 1) : true,
+    )
+    setPayUid(asset?.cardAssetUid ?? null)
+    setSettleDay(String(asset?.CARD_DAY_FIN ?? 1))
+    setPaymentDay(String(asset?.CARD_DAY_PAY ?? 1))
+    setError(null)
+
     let active = true
     ;(async () => {
-      const [rows, main, assets] = await Promise.all([
+      const [rows, main, assets, balMap] = await Promise.all([
         db.currencies.toArray().then((rows) => rows.sort((a, b) => a.ORDER_SEQ - b.ORDER_SEQ)),
         getMainCurrency(),
         db.assets.where('IS_DEL').equals(0).toArray(),
+        getAssetBalances(),
       ])
       if (!active) return
       setCurrencies(rows)
       setMainCurrency(main ?? null)
       setAllAssets(assets)
-      // Jika menambah aset baru tanpa currency eksplisit, gunakan mata uang utama yang aktif
+      if (asset) {
+        const liveBal = balMap.get(asset.uid) ?? 0
+        setCurrentTotal(liveBal)
+        setBalanceText(String(liveBal))
+      } else {
+        setCurrentTotal(0)
+        setBalanceText('0')
+      }
       if (!asset?.currencyUid && main?.uid) {
         setCurrencyUid((curr) => curr || main.uid)
+      }
+      if (!asset?.groupUid && !initialGroupUid && groups.length > 0) {
+        setGroupUid((curr) => curr || groups[0].uid)
       }
     })()
     return () => {
       active = false
     }
-  }, [open])
+  }, [open, groups, asset, initialBalance, initialGroupUid])
 
   const selectedGroup = groups.find((g) => g.uid === groupUid) ?? null
-  const card = selectedGroup ? isCardGroup(selectedGroup) : false
+  const isCreditCard = selectedGroup?.TYPE === ASSET_GROUP_TYPE.creditCard
+  const isDebitCard = selectedGroup?.TYPE === ASSET_GROUP_TYPE.debitCard
+  const hasPayer = isCreditCard || isDebitCard
 
   const currency = useMemo(() => {
     const row = currencies.find((c) => c.uid === currencyUid)
@@ -171,89 +204,176 @@ export function AssetForm({
 
   const payAsset = allAssets.find((a) => a.uid === payUid) ?? null
 
+  async function saveAssetWithDiff(
+    diff: number,
+    trimmedName: string,
+    cardFields: Record<string, unknown>,
+    isNew: boolean,
+    asIncomeExpense: boolean,
+  ) {
+    let targetUid = asset?.uid
+    if (isNew) {
+      const maxOrder = await getMaxAssetOrderSeq()
+      targetUid = `ast_${Date.now()}`
+      await createAsset({
+        uid: targetUid,
+        NIC_NAME: trimmedName,
+        ORDERSEQ: maxOrder + 1,
+        DESCRIPTION: description.trim(),
+        ZDATA: isShow ? '0' : '3',
+        ZDATA1: description.trim(),
+        ZDATA2: isDebitCard ? '1' : (includeTotal ? '0' : '1'),
+        IS_TRANS_EXPENSE: 0,
+        IS_CARD_AUTO_PAY: 0,
+        APP_PACKAGE: null,
+        APP_NAME: null,
+        SMS_TEL: null,
+        SMS_STRING: null,
+        A_UTIME: Date.now(),
+        CARD_DAY_FIN: isCreditCard ? Number(settleDay) || 1 : null,
+        CARD_DAY_PAY: isCreditCard ? Number(paymentDay) || 1 : null,
+        CARD_USAGE_HURDLE_TYPE: null,
+        CARD_USAGE_HURDLE_START_DATE: null,
+        CARD_USAGE_HURDLE_AMOUNT: null,
+        IS_SHOW: isShow ? 1 : 0,
+        IS_INCLUDE_TOTAL: isDebitCard ? 0 : (includeTotal ? 1 : 0),
+        IS_DEL: 0,
+        currencyUid,
+        cardAssetUid: hasPayer ? payUid : null,
+        groupUid,
+        IS_DEFAULT: 0,
+        isSynced: 0,
+        syncTime: 0,
+        syncVersion: 1,
+      })
+    } else if (asset?.id) {
+      await updateAsset(asset.id, {
+        NIC_NAME: trimmedName,
+        DESCRIPTION: description.trim(),
+        ZDATA: isShow ? '0' : '3',
+        ZDATA1: description.trim(),
+        ZDATA2: isDebitCard ? '1' : (includeTotal ? '0' : '1'),
+        currencyUid,
+        IS_INCLUDE_TOTAL: isDebitCard ? 0 : (includeTotal ? 1 : 0),
+        IS_SHOW: isShow ? 1 : 0,
+        groupUid,
+        ...cardFields,
+        A_UTIME: Date.now(),
+      })
+    }
+
+    if (diff !== 0 && targetUid) {
+      // Exact Money Manager parity from ConfigAssetEdit.java (method R):
+      // If user chooses operational income/expense:
+      //   diff > 0 -> DO_TYPE = 'income' (or '0'), diff < 0 -> DO_TYPE = 'expense' (or '1')
+      // If user chooses pure balance adjustment (Selisih saldo):
+      //   diff > 0 -> DO_TYPE = '7' (positive adjustment), ZMONEY = abs(diff)
+      //   diff < 0 -> DO_TYPE = '8' (negative adjustment), ZMONEY = abs(diff)
+      const doType = asIncomeExpense
+        ? diff > 0
+          ? '0'
+          : '1'
+        : diff > 0
+        ? '7'
+        : '8'
+      const absAmount = Math.abs(diff)
+
+      await createTransaction({
+        uid: `tx_adj_${Date.now()}`,
+        assetUid: targetUid,
+        CARDDIVIDMONTH: null,
+        ctgUid: '-4',
+        toAssetUid: null,
+        ZCONTENT: 'Selisih saldo',
+        ZDATE: todayIso(),
+        WDATE: todayIso(),
+        wtime: null,
+        paid: null,
+        DO_TYPE: doType,
+        ZMONEY: String(absAmount),
+        txUidTrans: null,
+        ZDATA: description.trim() || null,
+        SMS_RDATE: null,
+        IN_ZMONEY: null,
+        ASSET_NIC: trimmedName,
+        CATEGORY_NAME: 'Selisih saldo',
+        cardDivideUid: null,
+        CARD_DIVIDE_MONTH_STR: null,
+        MARK: 0,
+        txUidFee: null,
+        SMS_ORIGIN: null,
+        SMS_PARSE_CONTENT: null,
+        IS_DEL: 0,
+        UTIME: Date.now(),
+        currencyUid: currencyUid ?? 'IDR_IDR',
+        AMOUNT_ACCOUNT: absAmount,
+        lat: null,
+        lng: null,
+        gstd: null,
+        FEE: 0,
+        RECUR_TYPE: null,
+        RECUR_FREQ: null,
+        INSTALLMENT_MONTHS: null,
+        RECUR_UID: null,
+        isSynced: 0,
+        syncTime: 0,
+        syncVersion: 1,
+      })
+    }
+  }
+
   async function handleSave() {
     const trimmed = name.trim()
     if (!trimmed) {
       setError('Nama aset tidak boleh kosong')
       return
     }
-    const parsed = balanceText.trim() === '' ? 0 : parseAmount(balanceText)
-    if (Number.isNaN(parsed)) {
-      setError('Total harus berupa angka')
-      return
-    }
     if (!groupUid) {
       setError('Pilih grup aset terlebih dahulu')
+      return
+    }
+    if (isDebitCard && !payUid) {
+      setError('Pilih akun terhubung untuk kartu debit')
+      return
+    }
+    const parsed = isDebitCard ? 0 : (balanceText.trim() === '' ? 0 : parseAmount(balanceText))
+    if (Number.isNaN(parsed)) {
+      setError('Total harus berupa angka')
       return
     }
 
     setSaving(true)
     try {
-      const cardFields = card
+      const cardFields = isCreditCard
         ? {
             cardAssetUid: payUid,
             CARD_DAY_FIN: Number(settleDay) || 1,
             CARD_DAY_PAY: Number(paymentDay) || 1,
           }
-        : {}
-      if (asset?.id) {
-        const diff = parsed - currentTotal
-        if (diff !== 0) {
-          setBalanceDiffPrompt({
-            diff,
-            trimmedName: trimmed,
-            parsedAmount: parsed,
-            cardFields,
-          })
-          return
-        }
-
-        await updateAsset(asset.id, {
-          NIC_NAME: trimmed,
-          BALANCE: parsed,
-          DESCRIPTION: description.trim(),
-          currencyUid,
-          IS_INCLUDE_TOTAL: includeTotal ? 1 : 0,
-          IS_SHOW: isShow ? 1 : 0,
-          groupUid,
-          ...cardFields,
-          A_UTIME: Date.now(),
+        : isDebitCard
+        ? {
+            cardAssetUid: payUid,
+            CARD_DAY_FIN: null,
+            CARD_DAY_PAY: null,
+          }
+        : {
+            cardAssetUid: null,
+            CARD_DAY_FIN: null,
+            CARD_DAY_PAY: null,
+          }
+      const diff = isDebitCard ? 0 : (asset?.id ? parsed - currentTotal : parsed)
+      if (diff !== 0) {
+        setBalanceDiffPrompt({
+          diff,
+          trimmedName: trimmed,
+          parsedAmount: parsed,
+          cardFields,
+          isNew: !asset?.id,
         })
-      } else {
-        const maxOrder = await getMaxAssetOrderSeq()
-        await createAsset({
-          uid: `ast_${Date.now()}`,
-          NIC_NAME: trimmed,
-          ORDERSEQ: maxOrder + 1,
-          BALANCE: parsed,
-          DESCRIPTION: description.trim(),
-          ZDATA: '',
-          ZDATA1: '',
-          ZDATA2: '',
-          IS_TRANS_EXPENSE: 0,
-          IS_CARD_AUTO_PAY: 0,
-          APP_PACKAGE: null,
-          APP_NAME: null,
-          SMS_TEL: null,
-          SMS_STRING: null,
-          A_UTIME: Date.now(),
-          CARD_DAY_FIN: card ? Number(settleDay) || 1 : null,
-          CARD_DAY_PAY: card ? Number(paymentDay) || 1 : null,
-          CARD_USAGE_HURDLE_TYPE: null,
-          CARD_USAGE_HURDLE_START_DATE: null,
-          CARD_USAGE_HURDLE_AMOUNT: null,
-          IS_SHOW: isShow ? 1 : 0,
-          IS_INCLUDE_TOTAL: includeTotal ? 1 : 0,
-          IS_DEL: 0,
-          currencyUid,
-          cardAssetUid: card ? payUid : null,
-          groupUid,
-          IS_DEFAULT: 0,
-          isSynced: 0,
-          syncTime: 0,
-          syncVersion: 1,
-        })
+        return
       }
+
+      await saveAssetWithDiff(0, trimmed, cardFields, !asset?.id, false)
       onSaved()
     } catch {
       setError('Gagal menyimpan aset. Coba lagi.')
@@ -271,15 +391,16 @@ export function AssetForm({
           <ChevronLeft className="size-5" />
         </Button>
         <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">{title}</h1>
-        {asset?.id && onDeleted && (
+        {(asset?.id != null || !!asset?.uid) && (
           <Button
-            variant="destructive"
+            variant="ghost"
             size="icon-sm"
             aria-label={t.asset.menuDelete}
             data-testid="asset-delete"
             onClick={() => setConfirmDelete(true)}
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
-            <Trash2 className="size-4" />
+            <Trash2 className="size-5" />
           </Button>
         )}
       </header>
@@ -320,31 +441,37 @@ export function AssetForm({
             />
           </Field>
 
-          <Field label={t.transaction.total} htmlFor="asset-total-input">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                data-testid="asset-currency-button"
-                aria-label="Pilih mata uang"
-                onClick={() => setPicker('currency')}
-                className="shrink-0 rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-medium tabular-nums focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {currency?.SYMBOL ?? 'Rp'}
-              </button>
-              <input
-                id="asset-total-input"
-                type="text"
-                inputMode="decimal"
-                aria-describedby="asset-total-hint"
-                value={balanceText ? formatTypingAmount(balanceText, currency) : ''}
-                onChange={(e) => setBalanceText(normalizeAmountInput(e.target.value, currency))}
-                className={cn(inputClass, 'tabular-nums')}
-              />
+          {!isDebitCard ? (
+            <Field label={t.transaction.total} htmlFor="asset-total-input">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="asset-currency-button"
+                  aria-label="Pilih mata uang"
+                  onClick={() => setPicker('currency')}
+                  className="shrink-0 rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-medium tabular-nums focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {currency?.SYMBOL ?? 'Rp'}
+                </button>
+                <input
+                  id="asset-total-input"
+                  type="text"
+                  inputMode="decimal"
+                  aria-describedby="asset-total-hint"
+                  value={balanceText ? formatTypingAmount(balanceText, currency) : ''}
+                  onChange={(e) => setBalanceText(normalizeAmountInput(e.target.value, currency))}
+                  className={cn(inputClass, 'tabular-nums')}
+                />
+              </div>
+              <p id="asset-total-hint" className="mt-1 text-xs text-muted-foreground">
+                {t.asset.initialBalanceHelp}
+              </p>
+            </Field>
+          ) : (
+            <div className="rounded-xl border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Kartu debit menggunakan saldo dari rekening yang terhubung.
             </div>
-            <p id="asset-total-hint" className="mt-1 text-xs text-muted-foreground">
-              {t.asset.initialBalanceHelp}
-            </p>
-          </Field>
+          )}
 
           <Field label={t.transaction.description} htmlFor="asset-description-input">
             <input
@@ -357,9 +484,9 @@ export function AssetForm({
             />
           </Field>
 
-          {card && (
+          {hasPayer && (
             <div className="space-y-4 rounded-xl border bg-secondary/30 p-3">
-              <Field label={t.asset.payWith} htmlFor="asset-pay-field">
+              <Field label={isDebitCard ? 'Akun terhubung' : t.asset.payWith} htmlFor="asset-pay-field">
                 <button
                   id="asset-pay-field"
                   type="button"
@@ -375,62 +502,68 @@ export function AssetForm({
                 </button>
               </Field>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label={t.asset.closingDate} htmlFor="asset-settle-input">
-                  <input
-                    id="asset-settle-input"
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={settleDay}
-                    onChange={(e) => setSettleDay(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label={t.asset.paymentDate} htmlFor="asset-payment-input">
-                  <input
-                    id="asset-payment-input"
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={paymentDay}
-                    onChange={(e) => setPaymentDay(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
+              {isCreditCard && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label={t.asset.closingDate} htmlFor="asset-settle-input">
+                      <input
+                        id="asset-settle-input"
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={settleDay}
+                        onChange={(e) => setSettleDay(e.target.value)}
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label={t.asset.paymentDate} htmlFor="asset-payment-input">
+                      <input
+                        id="asset-payment-input"
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={paymentDay}
+                        onChange={(e) => setPaymentDay(e.target.value)}
+                        className={inputClass}
+                      />
+                    </Field>
+                  </div>
 
-              <dl className="space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-3" data-testid="card-payable">
-                  <dt className="text-muted-foreground">{t.asset.mustPay}</dt>
-                  <dd className="text-right tabular-nums">
-                    {formatDayMonth(cycles.payable.start)} ~ {formatDayMonth(cycles.payable.end)}{' '}
-                    <span className="text-muted-foreground">
-                      (Bayar: {formatDayMonth(cycles.payable.pay)})
-                    </span>
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-3" data-testid="card-upcoming">
-                  <dt className="text-muted-foreground">{t.asset.willPay}</dt>
-                  <dd className="text-right tabular-nums">
-                    {formatDayMonth(cycles.upcoming.start)} ~ {formatDayMonth(cycles.upcoming.end)}{' '}
-                    <span className="text-muted-foreground">
-                      (Bayar: {formatDayMonth(cycles.upcoming.pay)})
-                    </span>
-                  </dd>
-                </div>
-              </dl>
+                  <dl className="space-y-1 text-sm">
+                    <div className="flex items-center justify-between gap-3" data-testid="card-payable">
+                      <dt className="text-muted-foreground">{t.asset.mustPay}</dt>
+                      <dd className="text-right tabular-nums">
+                        {formatDayMonth(cycles.payable.start)} ~ {formatDayMonth(cycles.payable.end)}{' '}
+                        <span className="text-muted-foreground">
+                          (Bayar: {formatDayMonth(cycles.payable.pay)})
+                        </span>
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3" data-testid="card-upcoming">
+                      <dt className="text-muted-foreground">{t.asset.willPay}</dt>
+                      <dd className="text-right tabular-nums">
+                        {formatDayMonth(cycles.upcoming.start)} ~ {formatDayMonth(cycles.upcoming.end)}{' '}
+                        <span className="text-muted-foreground">
+                          (Bayar: {formatDayMonth(cycles.upcoming.pay)})
+                        </span>
+                      </dd>
+                    </div>
+                  </dl>
+                </>
+              )}
             </div>
           )}
 
           <div className="divide-y rounded-xl border">
-            <ToggleRow
-              label={t.asset.includeInTotal}
-              description={t.asset.includeInTotalDesc}
-              checked={includeTotal}
-              onChange={setIncludeTotal}
-              testId="asset-include-total"
-            />
+            {!isDebitCard && (
+              <ToggleRow
+                label={t.asset.includeInTotal}
+                description={t.asset.includeInTotalDesc}
+                checked={includeTotal}
+                onChange={setIncludeTotal}
+                testId="asset-include-total"
+              />
+            )}
             <ToggleRow
               label={t.asset.showHideSettings}
               description={t.asset.hideFromList}
@@ -513,10 +646,21 @@ export function AssetForm({
         cancelLabel={t.common.no}
         destructive
         onConfirm={async () => {
-          if (!asset?.id) return
-          await softDeleteAsset(asset.id)
+          let targetId = asset?.id
+          if (!targetId && asset?.uid) {
+            const found = await getAssetByUid(asset.uid)
+            targetId = found?.id
+          }
+          if (targetId) {
+            await softDeleteAsset(targetId)
+          }
           setConfirmDelete(false)
-          onDeleted?.()
+          if (onDeleted) {
+            onDeleted()
+          } else {
+            onClose()
+            onSaved()
+          }
         }}
         onCancel={() => setConfirmDelete(false)}
       />
@@ -533,87 +677,29 @@ export function AssetForm({
         cancelLabel="TIDAK"
         destructive={false}
         onConfirm={async () => {
-          if (!balanceDiffPrompt || !asset?.id) return
-          const { diff, trimmedName, cardFields } = balanceDiffPrompt
+          if (!balanceDiffPrompt) return
+          const { diff, trimmedName, cardFields, isNew } = balanceDiffPrompt
           setBalanceDiffPrompt(null)
           setSaving(true)
           try {
-            await updateAsset(asset.id, {
-              NIC_NAME: trimmedName,
-              BALANCE: asset.BALANCE,
-              DESCRIPTION: description.trim(),
-              currencyUid,
-              IS_INCLUDE_TOTAL: includeTotal ? 1 : 0,
-              IS_SHOW: isShow ? 1 : 0,
-              groupUid,
-              ...cardFields,
-              A_UTIME: Date.now(),
-            })
-            await createTransaction({
-              uid: `tx_adj_${Date.now()}`,
-              assetUid: asset.uid,
-              CARDDIVIDMONTH: null,
-              ctgUid: '',
-              toAssetUid: null,
-              ZCONTENT: 'Selisih saldo',
-              ZDATE: todayIso(),
-              WDATE: null,
-              wtime: null,
-              paid: null,
-              DO_TYPE: diff > 0 ? 'income' : 'expense',
-              ZMONEY: String(Math.abs(diff)),
-              txUidTrans: null,
-              ZDATA: null,
-              SMS_RDATE: null,
-              IN_ZMONEY: null,
-              ASSET_NIC: trimmedName,
-              CATEGORY_NAME: 'Edit saldo',
-              cardDivideUid: null,
-              CARD_DIVIDE_MONTH_STR: null,
-              MARK: 0,
-              txUidFee: null,
-              SMS_ORIGIN: null,
-              SMS_PARSE_CONTENT: null,
-              IS_DEL: 0,
-              UTIME: Date.now(),
-              currencyUid: currencyUid ?? 'IDR_IDR',
-              AMOUNT_ACCOUNT: Math.abs(diff),
-              lat: null,
-              lng: null,
-              gstd: null,
-              FEE: 0,
-              RECUR_TYPE: null,
-              RECUR_FREQ: null,
-              INSTALLMENT_MONTHS: null,
-              RECUR_UID: null,
-              isSynced: 0,
-              syncTime: 0,
-              syncVersion: 1,
-            })
+            await saveAssetWithDiff(diff, trimmedName, cardFields, Boolean(isNew), true)
             onSaved()
+          } catch {
+            setError('Gagal menyimpan aset. Coba lagi.')
           } finally {
             setSaving(false)
           }
         }}
         onCancel={async () => {
-          if (!balanceDiffPrompt || !asset?.id) return
-          const { trimmedName, parsedAmount, cardFields } = balanceDiffPrompt
-          const delta = currentTotal - asset.BALANCE
+          if (!balanceDiffPrompt) return
+          const { diff, trimmedName, cardFields, isNew } = balanceDiffPrompt
           setBalanceDiffPrompt(null)
           setSaving(true)
           try {
-            await updateAsset(asset.id, {
-              NIC_NAME: trimmedName,
-              BALANCE: parsedAmount - delta,
-              DESCRIPTION: description.trim(),
-              currencyUid,
-              IS_INCLUDE_TOTAL: includeTotal ? 1 : 0,
-              IS_SHOW: isShow ? 1 : 0,
-              groupUid,
-              ...cardFields,
-              A_UTIME: Date.now(),
-            })
+            await saveAssetWithDiff(diff, trimmedName, cardFields, Boolean(isNew), false)
             onSaved()
+          } catch {
+            setError('Gagal menyimpan aset. Coba lagi.')
           } finally {
             setSaving(false)
           }

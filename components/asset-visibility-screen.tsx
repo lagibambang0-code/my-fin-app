@@ -57,7 +57,7 @@ export function AssetVisibilityScreen({
     const next = asset.IS_SHOW === 1 ? 0 : 1
     // Optimistic: flip the switch instantly, then persist.
     setAssets((prev) => prev.map((a) => (a.id === asset.id ? { ...a, IS_SHOW: next } : a)))
-    await updateAsset(asset.id!, { IS_SHOW: next })
+    await updateAsset(asset.id!, { IS_SHOW: next, ZDATA: next === 1 ? '0' : '3' })
     onChanged()
   }
 
@@ -98,7 +98,7 @@ export function AssetVisibilityScreen({
                         >
                           <span className="block truncate text-sm">{asset.NIC_NAME}</span>
                           <span className="block text-xs text-muted-foreground tabular-nums">
-                            {formatCurrency(balances.get(asset.uid) ?? asset.BALANCE ?? 0, currency)}
+                            {formatCurrency(balances.get(asset.uid) ?? 0, currency)}
                           </span>
                         </button>
                         <span className="flex shrink-0 items-center gap-2">

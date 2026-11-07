@@ -15,6 +15,7 @@ import { TransactionSearchScreen } from '@/components/transaction-search-screen'
 import { useTranslation } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 import {
+  db,
   type Asset,
   type Category,
   type Currency,
@@ -25,12 +26,13 @@ import {
   getAssetGroups,
   getMainCurrency,
   getSettingByKey,
+  getTransactionTagMap,
   initDB,
   setTransactionBookmark,
   softDeleteTransaction,
 } from '@/lib/db'
 import { isCardGroup } from '@/lib/asset-utils'
-import { fromIso, formatCurrency, monthBounds, toIso } from '@/lib/format'
+import { fromIso, formatCurrency, monthBounds, toIso, todayIso } from '@/lib/format'
 import {
   EMPTY_FILTER,
   applyFilter,
@@ -82,29 +84,52 @@ export function TransaksiScreen() {
 
   const [bulkMode, setBulkMode] = useState(false)
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
-
+  const [tagsMap, setTagsMap] = useState<Map<string, string[]>>(new Map())
+  const [showTime, setShowTime] = useState<boolean>(false)
+  const [weekStartDay, setWeekStartDay] = useState<number>(1)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
 
   const load = useCallback(async () => {
     try {
       await initDB()
-      const [transactions, assetList, categoryList, main, groups, swipeSetting] = await Promise.all([
+      const [
+        transactions,
+        allAssetsList,
+        categoryList,
+        main,
+        groups,
+        swipeSetting,
+        weekSetting,
+        timeSetting,
+        tagMap,
+      ] = await Promise.all([
         getAllTransactions(),
-        getAllAssets(),
+        db.assets.toArray() as Promise<Asset[]>,
         getAllCategories(),
         getMainCurrency(),
         getAssetGroups(),
         getSettingByKey('swipe_gesture'),
+        getSettingByKey('week_start_day'),
+        getSettingByKey('time_display_order'),
+        getTransactionTagMap(),
       ])
-      setAll(transactions)
-      setAssets(assetList)
+      // Money Manager TxRepository.j: DO_TYPE in ('0', '1', '3') or 'income' / 'expense' / 'transfer'.
+      // DO_TYPE '7' and '8' (balance adjustments) only show in asset detail ledger, not the main transaction feed.
+      const operationalTxs = transactions.filter(
+        (t) => t.DO_TYPE !== '7' && t.DO_TYPE !== '8' && t.DO_TYPE !== 'adjustment' && t.DO_TYPE !== '4',
+      )
+      setAll(operationalTxs)
+      setAssets(allAssetsList)
       setCategories(categoryList)
       setCurrency(main ?? null)
+      setTagsMap(tagMap)
+      setShowTime(timeSetting?.ZDATA === '1' || timeSetting?.ZDATA === '3')
       setSwipeGesture((swipeSetting?.ZDATA as 'change_date' | 'change_tab' | 'none') ?? 'change_date')
+      setWeekStartDay(weekSetting?.ZDATA !== undefined ? Number(weekSetting.ZDATA) : 1)
       const cardGroupUids = new Set(groups.filter(isCardGroup).map((group) => group.uid))
       setCardAssetUids(
-        new Set(assetList.filter((asset) => cardGroupUids.has(asset.groupUid)).map((a) => a.uid)),
+        new Set(allAssetsList.filter((asset) => cardGroupUids.has(asset.groupUid)).map((a) => a.uid)),
       )
       setLoadError(false)
     } catch (error) {
@@ -123,17 +148,25 @@ export function TransaksiScreen() {
       if (cur) setCurrency(cur)
       void load()
     }
+    const onSettingsChanged = () => {
+      void load()
+    }
     window.addEventListener('dompetku:currency-changed', onCurrencyChanged)
-    return () => window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
+    window.addEventListener('dompetku:settings-changed', onSettingsChanged)
+    return () => {
+      window.removeEventListener('dompetku:currency-changed', onCurrencyChanged)
+      window.removeEventListener('dompetku:settings-changed', onSettingsChanged)
+    }
   }, [load])
-
   const lookups: Lookups = useMemo(
     () => ({
       categories: new Map(categories.map((category) => [category.uid, category])),
       assets: new Map(assets.map((asset) => [asset.uid, asset])),
       currency,
+      tags: tagsMap,
+      showTime,
     }),
-    [categories, assets, currency],
+    [categories, assets, currency, tagsMap, showTime],
   )
 
   const periodRows = useMemo(() => {
@@ -164,13 +197,40 @@ export function TransaksiScreen() {
   const bookmarks = useMemo(() => all.filter((tx) => tx.MARK === 1), [all])
   const filterActive = isFilterActive(filter)
 
-  const openAdd = () => {
+  const openAdd = (targetDate?: string) => {
     setEditing(null)
-    setCopyDraft(null)
+    if (targetDate) {
+      const today = todayIso()
+      const isPast = targetDate < today
+      const now = new Date()
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      setCopyDraft({
+        type: 'expense',
+        date: targetDate,
+        amount: 0,
+        categoryUid: null,
+        categoryName: null,
+        assetUid: null,
+        assetName: null,
+        toAssetUid: null,
+        toAssetName: null,
+        fee: 0,
+        note: '',
+        description: '',
+        mark: false,
+        tagUids: [],
+        recurType: null,
+        recurFreq: null,
+        installmentMonths: null,
+        // Custom time field on draft: if past date use 20:55, otherwise current time
+        time: isPast ? '20:55' : currentTime,
+      } as unknown as TransactionDraft)
+    } else {
+      setCopyDraft(null)
+    }
     setFormKey((key) => key + 1)
     setFormOpen(true)
   }
-
   const openEdit = (tx: Transaction) => {
     setEditing(tx)
     setCopyDraft(null)
@@ -327,7 +387,7 @@ export function TransaksiScreen() {
         </div>
 
         <dl
-          className="mt-3 grid grid-cols-3 gap-2 rounded-2xl border bg-card p-3"
+          className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2 rounded-2xl border bg-card p-2.5 sm:p-3"
           data-testid="trx-summary"
         >
           <SummaryCell
@@ -382,6 +442,7 @@ export function TransaksiScreen() {
             transactions={filteredRows}
             lookups={lookups}
             onOpen={openEdit}
+            onAddDate={(dateIso) => openAdd(dateIso)}
             filterActive={filterActive}
             onClearFilter={() => setFilter({ ...EMPTY_FILTER })}
             bulkMode={bulkMode}
@@ -396,6 +457,7 @@ export function TransaksiScreen() {
             transactions={filteredRows}
             lookups={lookups}
             onOpen={openEdit}
+            weekStartDay={weekStartDay}
           />
         ) : view === 'monthly' ? (
           <TransactionMonthly year={period.year} transactions={yearRows} lookups={lookups} />
@@ -442,7 +504,7 @@ export function TransaksiScreen() {
               size="icon-lg"
               aria-label="Tambah transaksi"
               data-testid="trx-fab"
-              onClick={openAdd}
+              onClick={() => openAdd()}
               className="pointer-events-auto size-14 rounded-full shadow-lg transition-transform duration-200 ease-out-quart hover:scale-[1.03] active:scale-95 [&_svg:not([class*='size-'])]:size-6"
             >
               <Plus aria-hidden="true" />
@@ -519,18 +581,28 @@ function SummaryCell({
   testId: string
   emphasis?: boolean
 }) {
+  const formatted = formatCurrency(value, currency)
+  const isLong = formatted.length > 11
+  const isVeryLong = formatted.length > 14
+
   return (
     <div className="min-w-0">
-      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dt className="truncate text-[11px] sm:text-xs text-muted-foreground">{label}</dt>
       <dd
         data-testid={testId}
+        title={formatted}
         className={cn(
-          'mt-1 truncate text-sm font-semibold tabular-nums md:text-base',
+          'mt-0.5 truncate font-semibold tabular-nums tracking-tight',
+          isVeryLong
+            ? 'text-[11px] sm:text-xs md:text-sm'
+            : isLong
+            ? 'text-[12px] sm:text-[13px] md:text-base'
+            : 'text-xs sm:text-sm md:text-base',
           emphasis && 'text-primary',
           value < 0 && 'text-destructive',
         )}
       >
-        {formatCurrency(value, currency)}
+        {formatted}
       </dd>
     </div>
   )

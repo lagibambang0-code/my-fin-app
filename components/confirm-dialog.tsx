@@ -84,12 +84,19 @@ export function ConfirmDialog({
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button ref={cancelRef} type="button" variant="outline" onClick={onCancel}>
+          <Button
+            ref={cancelRef}
+            type="button"
+            variant="outline"
+            data-testid="confirm-dialog-cancel"
+            onClick={onCancel}
+          >
             {cancelLabel}
           </Button>
           <Button
             type="button"
             variant={destructive ? 'destructive' : 'default'}
+            data-testid="confirm-dialog-confirm"
             onClick={onConfirm}
           >
             {confirmLabel}
