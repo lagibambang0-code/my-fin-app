@@ -34,13 +34,21 @@ async function run() {
   await pickerFrom[0].click()
   await new Promise((r) => setTimeout(r, 300))
 
-  const toAssetBtn = await page.waitForSelector('[data-testid="trx-to-asset-button"]')
-  await toAssetBtn.click()
-  await new Promise((r) => setTimeout(r, 300))
-  const pickerTo = await page.$$('[data-testid^="picker-option-"]')
+  let pickerTo = await page.$$('[data-testid^="picker-option-"]')
+  if (pickerTo.length === 0) {
+    const toAssetBtn = await page.waitForSelector('[data-testid="trx-to-asset-button"]')
+    await toAssetBtn.click()
+    await new Promise((r) => setTimeout(r, 300))
+    pickerTo = await page.$$('[data-testid^="picker-option-"]')
+  }
   await pickerTo[1].click()
   await new Promise((r) => setTimeout(r, 300))
-
+  let numpadKey1 = await page.$('[data-testid="numpad-1"]')
+  if (!numpadKey1) {
+    const amountDisplay = await page.waitForSelector('[data-testid="trx-amount-display"]')
+    await amountDisplay.click()
+    await new Promise((r) => setTimeout(r, 300))
+  }
   for (const digit of ['1', '0', '0', '0', '0']) {
     const key = await page.waitForSelector(`[data-testid="numpad-${digit}"]`)
     await key.click()
@@ -75,7 +83,9 @@ async function run() {
   await txRows[feeIndex].click()
   await page.waitForSelector('[data-testid="transaction-form"]')
   await new Promise((r) => setTimeout(r, 500))
-
+  const amountDisplay = await page.waitForSelector('[data-testid="trx-amount-display"]')
+  await amountDisplay.click()
+  await new Promise((r) => setTimeout(r, 300))
   const backBtn = await page.waitForSelector('[data-testid="numpad-back"]')
   await backBtn.click()
   await backBtn.click()

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   AlignLeft,
+  ArrowUpDown,
   Camera,
   Calendar,
   CalendarClock,
@@ -52,6 +53,7 @@ import {
   genUid,
   getAllAssets,
   getAssetBalances,
+  getMainCategoriesByType,
   getMainCurrency,
   getPhotosByTransaction,
   getTagUidsForTransaction,
@@ -190,7 +192,7 @@ export function TransactionForm({
   const [timePickerOpen, setTimePickerOpen] = useState(false)
   const [raw, setRaw] = useState('')
   const [negative, setNegative] = useState(false)
-  const [numpadOpen, setNumpadOpen] = useState(true)
+  const [numpadOpen, setNumpadOpen] = useState(false)
   const [fee, setFee] = useState(0)
   const [feeSheetOpen, setFeeSheetOpen] = useState(false)
   const [categoryUid, setCategoryUid] = useState<string | null>(null)
@@ -222,8 +224,16 @@ export function TransactionForm({
 
 
   const fileRef = useRef<HTMLInputElement>(null)
+  const noteInputRef = useRef<HTMLInputElement>(null)
   // Stable uid per form session so photos can attach before the first save.
   const uidRef = useRef(transaction?.uid ?? genUid('trx'))
+
+  const handleSwapAssets = () => {
+    const prevFrom = assetUid
+    const prevTo = toAssetUid
+    setAssetUid(prevTo)
+    setToAssetUid(prevFrom)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -252,7 +262,8 @@ export function TransactionForm({
     const startMoney = source ? Number(source.ZMONEY) || 0 : (initial?.amount ?? 0)
     setRaw(startMoney !== 0 ? String(Math.abs(startMoney)) : '')
     setNegative(startMoney < 0)
-    setNumpadOpen(true)
+    const isNew = !source && !initial?.categoryUid && !initial?.amount
+    setNumpadOpen(isNew && !isEdit)
     const initFee = Number(source?.FEE || initial?.fee || 0) || 0
     setFee(initFee)
     setFeeSheetOpen(false)
@@ -774,27 +785,37 @@ export function TransactionForm({
                 onAction={() => setFeeSheetOpen(true)}
               />
 
-              <FieldRow
-                testId="trx-from-asset-button"
-                valueTestId="trx-from-asset-value"
-                icon={<Wallet aria-hidden="true" className="size-4" />}
-                label={t.transaction.fromAccount}
-                value={assetName}
-                placeholder={t.transaction.selectAccount}
-                onAction={() => setAssetPicker('from')}
-              />
-              <FieldRow
-                testId="trx-to-asset-button"
-                valueTestId="trx-to-asset-value"
-                icon={<Wallet aria-hidden="true" className="size-4" />}
-                label={t.transaction.toAccount}
-                value={toAssetName}
-                placeholder={t.transaction.selectAccount}
-                onAction={() => setAssetPicker('to')}
-              />
+              <div className="relative">
+                <FieldRow
+                  testId="trx-from-asset-button"
+                  valueTestId="trx-from-asset-value"
+                  icon={<Wallet aria-hidden="true" className="size-4" />}
+                  label={t.transaction.fromAccount}
+                  value={assetName}
+                  placeholder={t.transaction.selectAccount}
+                  onAction={() => setAssetPicker('from')}
+                />
+                <FieldRow
+                  testId="trx-to-asset-button"
+                  valueTestId="trx-to-asset-value"
+                  icon={<Wallet aria-hidden="true" className="size-4" />}
+                  label={t.transaction.toAccount}
+                  value={toAssetName}
+                  placeholder={t.transaction.selectAccount}
+                  onAction={() => setAssetPicker('to')}
+                />
+                <button
+                  type="button"
+                  data-testid="trx-swap-assets-button"
+                  aria-label="Tukar akun asal dan tujuan"
+                  onClick={handleSwapAssets}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 z-10 flex size-8 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-xs transition-transform duration-150 hover:bg-secondary hover:text-foreground active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ArrowUpDown className="size-4" />
+                </button>
+              </div>
             </div>
           )}
-
           {/* Catatan, deskripsi, tag & foto */}
           <div className="overflow-hidden rounded-2xl border bg-card">
             <div className="flex min-h-12 items-center gap-2.5 px-3.5 py-2">
@@ -805,11 +826,13 @@ export function TransactionForm({
                 {t.transaction.note}
               </label>
               <input
+                ref={noteInputRef}
                 id="trx-note-input"
                 type="text"
                 data-testid="trx-note-input"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
+                onFocus={() => setNumpadOpen(false)}
                 placeholder={t.transaction.note}
                 className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
@@ -965,12 +988,12 @@ export function TransactionForm({
       {/* Numpad */}
       <div className="border-t bg-card/80 px-3 pt-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
         <div className="mx-auto w-full max-w-lg">
-          {/* Total display — always visible, tap to reopen numpad */}
+          {/* Total display — always visible, tap to toggle numpad */}
           <div className="mb-2 flex w-full items-end justify-between gap-2">
             <button
               type="button"
               aria-label="Buka papan angka"
-              onClick={() => setNumpadOpen(true)}
+              onClick={() => setNumpadOpen((o) => !o)}
               className="flex min-w-0 flex-1 items-end gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
             >
               <div className="min-w-0">
@@ -1019,7 +1042,16 @@ export function TransactionForm({
               negative={negative}
               onMinus={() => setNegative((n) => !n)}
               showDone={true}
-              onDone={() => setNumpadOpen(false)}
+              onDone={() => {
+                setNumpadOpen(false)
+                if (!isEdit && !categoryUid && type !== 'transfer') {
+                  setTimeout(() => setCategoryPickerOpen(true), 150)
+                } else if (!isEdit && type === 'transfer' && !assetUid) {
+                  setTimeout(() => setAssetPicker('from'), 150)
+                } else if (!note) {
+                  setTimeout(() => noteInputRef.current?.focus(), 150)
+                }
+              }}
             />
           )}
 
@@ -1054,7 +1086,12 @@ export function TransactionForm({
         onSelect={(category: Category, parent: Category | null) => {
           setCategoryUid(category.uid)
           setCategoryLabel(parent ? `${parent.NAME} › ${category.NAME}` : category.NAME)
-
+          setCategoryPickerOpen(false)
+          if (!isEdit && !assetUid) {
+            setTimeout(() => setAssetPicker('from'), 150)
+          } else if (!note) {
+            setTimeout(() => noteInputRef.current?.focus(), 150)
+          }
         }}
         onClose={() => setCategoryPickerOpen(false)}
       />
@@ -1088,12 +1125,17 @@ export function TransactionForm({
         onSelect={(value) => {
           if (assetPicker === 'to') {
             setToAssetUid(value)
-
+            setAssetPicker(null)
+            if (!note) setTimeout(() => noteInputRef.current?.focus(), 150)
           } else {
             setAssetUid(value)
-
+            setAssetPicker(null)
+            if (!isEdit && type === 'transfer' && !toAssetUid) {
+              setTimeout(() => setAssetPicker('to'), 150)
+            } else if (!note) {
+              setTimeout(() => noteInputRef.current?.focus(), 150)
+            }
           }
-          setAssetPicker(null)
         }}
         onClose={() => setAssetPicker(null)}
         emptyLabel="Belum ada aset. Tambahkan dari tab Aset."
