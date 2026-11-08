@@ -63,22 +63,25 @@ export function InvestmentsScreen() {
       for (const item of list) {
         const records = await getInvestmentRecords(item.uid)
         recsMap.set(item.uid, records)
-        const count = records.length
-        const currentRecord = count > 0 ? records[count - 1] : null
-        const prevRecord = count > 1 ? records[count - 2] : null
 
-        const currentValue = currentRecord?.amount ?? 0
-        const previousValue = prevRecord?.amount ?? currentValue
-        const diff = currentRecord && prevRecord ? currentRecord.amount - prevRecord.amount : 0
-        const diffPercent = previousValue > 0 ? (diff / previousValue) * 100 : 0
+        let runningCapital = 0
+        let latestPnl = 0
+        for (const r of records) {
+          if (r.type === 'deposit') runningCapital += r.amount
+          else if (r.type === 'pnl') latestPnl = r.amount
+        }
+        const currentValue = runningCapital + latestPnl
+        const totalDeposit = runningCapital
+        const pnlAmount = latestPnl
+        const pnlPercent = totalDeposit > 0 ? (pnlAmount / totalDeposit) * 100 : 0
 
         sumMap.set(item.uid, {
           asset: item,
           records,
           currentValue,
-          previousValue,
-          diff,
-          diffPercent,
+          previousValue: totalDeposit,
+          diff: pnlAmount,
+          diffPercent: pnlPercent,
         })
       }
       setSummaries(sumMap)
@@ -110,7 +113,12 @@ export function InvestmentsScreen() {
     (sum, s) => sum + s.diff,
     0,
   )
-
+  const totalPortfolioCapital = Array.from(summaries.values()).reduce(
+    (sum, s) => sum + s.previousValue,
+    0,
+  )
+  const totalPortfolioPercent =
+    totalPortfolioCapital > 0 ? (totalPortfolioDiff / totalPortfolioCapital) * 100 : 0
   return (
     <div className="flex flex-1 flex-col" data-testid="investments-screen">
       <header className="sticky top-0 z-30 bg-background/80 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-4 backdrop-blur-xl md:px-10 md:pt-6 md:pb-8">
@@ -184,14 +192,8 @@ export function InvestmentsScreen() {
                 ) : null}
                 <span>
                   {totalPortfolioDiff > 0 ? '+' : ''}
-                  {formatCurrency(totalPortfolioDiff, currency)} (
-                  {totalPortfolioDiff > 0 ? '+' : ''}
-                  {formatPercent3(
-                    totalPortfolioValue > 0
-                      ? (totalPortfolioDiff / (totalPortfolioValue - totalPortfolioDiff)) * 100
-                      : 0,
-                  )}
-                  )
+                  {formatCurrency(totalPortfolioDiff, currency)} ({totalPortfolioDiff > 0 ? '+' : ''}
+                  {formatPercent3(totalPortfolioPercent)})
                 </span>
               </span>
               <span className="text-xs text-muted-foreground">
@@ -262,7 +264,7 @@ export function InvestmentsScreen() {
                         {formatCurrency(currentVal, currency)}
                       </span>
 
-                      {recordCount > 1 ? (
+                      {recordCount > 0 && lastRecord?.type === 'pnl' ? (
                         <span
                           className={cn(
                             'inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums',
@@ -279,7 +281,11 @@ export function InvestmentsScreen() {
                         </span>
                       ) : (
                         <span className="text-[11px] text-muted-foreground">
-                          {recordCount === 1 ? t.investments.entrySingular : `${recordCount} ${t.investments.entryPlural}`}
+                          {recordCount === 0
+                            ? t.investments.noRecords
+                            : recordCount === 1
+                            ? t.investments.entrySingular
+                            : `${recordCount} ${t.investments.entryPlural}`}
                         </span>
                       )}
                     </div>

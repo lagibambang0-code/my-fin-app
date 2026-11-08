@@ -340,18 +340,18 @@ export type InvestmentAsset = {
   utime: number
 }
 
+export type InvestmentRecordType = 'deposit' | 'pnl'
+
 export type InvestmentRecord = {
   id?: number
   uid: string
   investmentUid: string
   date: string
   time: string
+  type: InvestmentRecordType
   amount: number
-  /** Net deposit added in this entry (positive = inflow, negative = withdrawal). Default 0. */
-  deposit?: number
   note?: string
   createdAt: number
-  isDel: number
   utime: number
 }
 
@@ -559,6 +559,47 @@ export class DompetkuDB extends Dexie {
       investments: 'id++, uid, isDel, createdAt',
       investmentRecords: 'id++, uid, investmentUid, date, isDel',
     })
+
+    // v12 — investmentRecords: refactor ke model type + amount murni dan hilangkan isDel (hard delete)
+    this.version(12)
+      .stores({
+        currencies: 'id++, uid, ISO, IS_MAIN_CURRENCY',
+        settings: 'id++, uid, dataTypeKey',
+        categories: 'id++, uid, TYPE, STATUS, pUid',
+        assetGroups: 'id++, uid, TYPE, ORDERSEQ, ACC_GROUP_NAME, IS_DEL',
+        assets: 'id++, uid, groupUid, currencyUid, IS_DEL, IS_SHOW',
+        transactions:
+          'id++, uid, DO_TYPE, ZDATE, ctgUid, assetUid, IS_DEL, UTIME, MARK, RECUR_UID',
+        photos: 'id++, uid, txUid, IS_DEL',
+        budgets: 'id++, uid, targetUid, IS_TOTAL, IS_DEL, ORDER_SEQ',
+        budgetAmounts: 'id++, uid, budgetUid, BUDGET_PERIOD, IS_DEL',
+        repeats: 'id++, uid, NEXT_DATE, IS_DEL, REPEAT_TYPE, ORIGIN_TX_UID',
+        tags: 'id++, uid, isDel, orderSeq',
+        txTags: 'id++, uid, txUid, tagUid, isDel',
+        investments: 'id++, uid, isDel, createdAt',
+        investmentRecords: 'id++, uid, investmentUid, type, date',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('investmentRecords')
+          .toCollection()
+          .modify((r: Record<string, unknown>) => {
+            if (!r.type) {
+              if (r.deposit != null && r.deposit !== 0) {
+                r.type = 'deposit'
+                r.amount = r.deposit
+              } else if (r.pnl != null) {
+                r.type = 'pnl'
+                r.amount = r.pnl
+              } else {
+                r.type = 'deposit'
+              }
+            }
+            delete r.deposit
+            delete r.pnl
+            delete r.isDel
+          })
+      })
   }
 }
 
@@ -1776,9 +1817,22 @@ export async function updateTransaction(
 export async function softDeleteTransaction(id: number): Promise<void> {
   const row = await db.transactions.get(id)
   await db.transactions.update(id, { IS_DEL: 1, UTIME: Date.now() })
-  // Removing the transaction that holds a repeat frequency also stops its
-  // series, so no further occurrences are generated (PRD-05 §8.1).
   if (row?.uid) {
+    // If this transaction is a transfer with a linked fee transaction:
+    if ((row.DO_TYPE === 'transfer' || row.DO_TYPE === '3') && row.txUidFee) {
+      const feeTx = await db.transactions.where('uid').equals(row.txUidFee).first()
+      if (feeTx?.id && feeTx.IS_DEL === 0) {
+        await db.transactions.update(feeTx.id, { IS_DEL: 1, UTIME: Date.now() })
+      }
+    } else if (row.txUidFee) {
+      // If this was a fee transaction being deleted, unlink it from the parent transfer without deleting the transfer!
+      const parentTransfer = await db.transactions.where('uid').equals(row.txUidFee).first()
+      if (parentTransfer?.id) {
+        await db.transactions.update(parentTransfer.id, { txUidFee: null, FEE: 0, UTIME: Date.now() })
+      }
+    }
+    // Removing the transaction that holds a repeat frequency also stops its
+    // series, so no further occurrences are generated (PRD-05 §8.1).
     const series = await db.repeats.where('ORIGIN_TX_UID').equals(row.uid).toArray()
     await Promise.all(
       series
@@ -1790,7 +1844,14 @@ export async function softDeleteTransaction(id: number): Promise<void> {
 }
 
 export async function restoreTransaction(id: number): Promise<void> {
+  const row = await db.transactions.get(id)
   await db.transactions.update(id, { IS_DEL: 0, UTIME: Date.now() })
+  if ((row?.DO_TYPE === 'transfer' || row?.DO_TYPE === '3') && row.txUidFee) {
+    const feeTx = await db.transactions.where('uid').equals(row.txUidFee).first()
+    if (feeTx?.id) {
+      await db.transactions.update(feeTx.id, { IS_DEL: 0, UTIME: Date.now() })
+    }
+  }
   notifyTransactionsChanged()
 }
 
@@ -1826,7 +1887,8 @@ export async function getAssetBalanceDeltas(): Promise<Map<string, number>> {
     } else if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1') {
       add(t.assetUid, -amount)
     } else if (t.DO_TYPE === 'transfer' || t.DO_TYPE === '3') {
-      add(t.assetUid, -(amount + (Number(t.FEE) || 0)))
+      const feeAmount = t.txUidFee ? 0 : (Number(t.FEE) || 0)
+      add(t.assetUid, -(amount + feeAmount))
       // Only credit toAssetUid if not a paired Money Manager transfer row
       if (t.toAssetUid && !t.txUidTrans) add(t.toAssetUid, Number(t.IN_ZMONEY) || amount)
     } else if (t.DO_TYPE === '4') {
@@ -2466,10 +2528,7 @@ export async function softDeleteInvestment(uid: string): Promise<void> {
   const row = await db.investments.where('uid').equals(uid).first()
   if (row?.id != null) {
     await db.investments.update(row.id, { isDel: 1, utime: Date.now() })
-    const records = await db.investmentRecords.where('investmentUid').equals(uid).toArray()
-    await Promise.all(
-      records.map((r) => db.investmentRecords.update(r.id!, { isDel: 1, utime: Date.now() })),
-    )
+    await db.investmentRecords.where('investmentUid').equals(uid).delete()
   }
 }
 
@@ -2480,19 +2539,31 @@ export async function getInvestmentRecords(
     .where('investmentUid')
     .equals(investmentUid)
     .toArray()
-  const active = rows.filter((r) => r.isDel === 0)
-  return active.sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date)
-    return a.time.localeCompare(b.time)
-  })
+  return (rows as unknown as Record<string, unknown>[])
+    .map((r) => {
+      if (!r.type) {
+        if (r.deposit != null && r.deposit !== 0) {
+          return { ...r, type: 'deposit', amount: r.deposit } as InvestmentRecord
+        }
+        if (r.pnl != null) {
+          return { ...r, type: 'pnl', amount: r.pnl } as InvestmentRecord
+        }
+        return { ...r, type: 'deposit' } as InvestmentRecord
+      }
+      return r as unknown as InvestmentRecord
+    })
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date)
+      return a.time.localeCompare(b.time)
+    })
 }
 
 export async function createInvestmentRecord(input: {
   investmentUid: string
   date: string
   time: string
+  type: InvestmentRecordType
   amount: number
-  deposit?: number
   note?: string
 }): Promise<number> {
   const now = Date.now()
@@ -2501,11 +2572,10 @@ export async function createInvestmentRecord(input: {
     investmentUid: input.investmentUid,
     date: input.date,
     time: input.time,
+    type: input.type,
     amount: input.amount,
-    deposit: input.deposit ?? 0,
     note: input.note?.trim() || undefined,
     createdAt: now,
-    isDel: 0,
     utime: now,
   })
 }
@@ -2520,9 +2590,7 @@ export async function updateInvestmentRecord(
   }
 }
 
-export async function softDeleteInvestmentRecord(uid: string): Promise<void> {
-  const row = await db.investmentRecords.where('uid').equals(uid).first()
-  if (row?.id != null) {
-    await db.investmentRecords.update(row.id, { isDel: 1, utime: Date.now() })
-  }
+/** Hard delete permanen untuk catatan nilai investasi (tanpa isDel). */
+export async function deleteInvestmentRecord(uid: string): Promise<void> {
+  await db.investmentRecords.where('uid').equals(uid).delete()
 }

@@ -183,12 +183,12 @@ function SubRow({
       data-testid={testId}
       className="flex items-center gap-3 border-t px-4 py-2.5 first:border-t-0"
     >
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+      <span className="min-w-0 flex-1 truncate text-xs sm:text-sm font-medium">{name}</span>
+      <span className="shrink-0 text-[10px] sm:text-xs tabular-nums text-muted-foreground">
         {formatPercent(percent)}
       </span>
       <span
-        className={emphasis ? 'shrink-0 text-sm font-bold tabular-nums' : 'shrink-0 text-sm font-semibold tabular-nums'}
+        className={emphasis ? 'shrink-0 text-xs sm:text-sm font-bold tabular-nums' : 'shrink-0 text-xs sm:text-sm font-semibold tabular-nums'}
       >
         {formatCurrency(amount, currency)}
       </span>

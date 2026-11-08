@@ -55,6 +55,9 @@ export function summarize(rows: Transaction[]): Summary {
     const amount = amountOf(t)
     if (t.DO_TYPE === 'income' || t.DO_TYPE === '0' || t.DO_TYPE === '2') income += amount
     else if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1') expense += amount
+    else if ((t.DO_TYPE === 'transfer' || t.DO_TYPE === '3') && !t.txUidFee && Number(t.FEE) > 0) {
+      expense += Number(t.FEE)
+    }
   }
   return { income, expense, total: income - expense }
 }
@@ -79,7 +82,8 @@ export function groupByDate(rows: Transaction[], scopeAssetUid?: string): DayGro
     if (scopeAssetUid) {
       if (t.DO_TYPE === 'transfer' || t.DO_TYPE === '3' || t.DO_TYPE === '4') {
         if (t.assetUid === scopeAssetUid) {
-          group.expense += amount + (Number(t.FEE) || 0)
+          const feeAmount = t.txUidFee ? 0 : (Number(t.FEE) || 0)
+          group.expense += amount + feeAmount
         } else if (t.toAssetUid === scopeAssetUid) {
           group.income += Number(t.IN_ZMONEY) || amount
         }
@@ -97,6 +101,9 @@ export function groupByDate(rows: Transaction[], scopeAssetUid?: string): DayGro
     } else {
       if (t.DO_TYPE === 'income' || t.DO_TYPE === '0' || t.DO_TYPE === '2') group.income += amount
       else if (t.DO_TYPE === 'expense' || t.DO_TYPE === '1') group.expense += amount
+      else if ((t.DO_TYPE === 'transfer' || t.DO_TYPE === '3') && !t.txUidFee && Number(t.FEE) > 0) {
+        group.expense += Number(t.FEE)
+      }
     }
     group.items.push(t)
   }

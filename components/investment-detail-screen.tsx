@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Calendar,
   ChevronLeft,
@@ -48,6 +48,7 @@ export function InvestmentDetailScreen({
   const [editingRecord, setEditingRecord] = useState<InvestmentRecord | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'deposit' | 'pnl'>('all')
 
   const load = useCallback(async () => {
     if (!investment?.uid) return
@@ -70,31 +71,56 @@ export function InvestmentDetailScreen({
       load()
     }
   }, [open, load])
+  // Urutkan rekaman kronologis terlama ke terbaru
+  const sortedRecords = useMemo(() => {
+    return [...records].sort((a, b) =>
+      a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date),
+    )
+  }, [records])
 
-  if (!open || !investment) return null
+  // Turunkan garis waktu portofolio: capital, pnl, dan amount berjalan secara deterministik
+  const derivedTimeline = useMemo(() => {
+    let runningCapital = 0
+    let latestPnl = 0
 
-  // Hitung metrik deposit, nilai sekarang, dan PnL
-  const count = records.length
-  const currentRecord = count > 0 ? records[count - 1] : null
-  const prevRecord = count > 1 ? records[count - 2] : null
+    return sortedRecords.map((r: InvestmentRecord) => {
+      const isDeposit = r.type === 'deposit'
+      if (isDeposit) {
+        runningCapital += r.amount
+      } else {
+        latestPnl = r.amount
+      }
+      const amount = runningCapital + latestPnl
+      return {
+        ...r,
+        derivedCapital: runningCapital,
+        derivedPnl: latestPnl,
+        derivedAmount: amount,
+      }
+    })
+  }, [sortedRecords])
+  const count = derivedTimeline.length
+  const currentRecord = count > 0 ? derivedTimeline[count - 1] : null
+  const prevRecord = count > 1 ? derivedTimeline[count - 2] : null
 
-  const currentValue = currentRecord?.amount ?? 0
-  const previousValue = prevRecord?.amount ?? currentValue
+  const currentValue = currentRecord?.derivedAmount ?? 0
+  const previousValue = prevRecord?.derivedAmount ?? currentValue
 
-  // Nilai deposit: jika ada field deposit eksplisit gunakan sum(deposit),
-  // jika tidak ada / bernilai 0 fallback ke firstRecord.amount (deposit awal)
-  const explicitDepositSum = records.reduce((sum, r) => sum + (r.deposit ?? 0), 0)
-  const totalDeposit = explicitDepositSum > 0
-    ? explicitDepositSum
-    : (records.length > 0 ? records[0].amount : 0)
-
-  // PnL murni berdasarkan selisih dari Nilai Deposit ke Nilai Sekarang
-  const pnlAmount = currentValue - totalDeposit
+  const totalDeposit = currentRecord?.derivedCapital ?? 0
+  const pnlAmount = currentRecord?.derivedPnl ?? 0
   const pnlPercent = totalDeposit > 0 ? (pnlAmount / totalDeposit) * 100 : 0
 
-  // Kenaikan/penurunan terbaru dari entri sebelumnya
-  const latestDiff = currentRecord && prevRecord ? currentRecord.amount - previousValue : 0
+  const latestDiff = currentRecord && prevRecord ? currentRecord.derivedAmount - previousValue : 0
   const latestPercent = previousValue > 0 ? (latestDiff / previousValue) * 100 : 0
+
+  // Filter riwayat catatan nilai berdasarkan segmen All, Deposit, atau PnL
+  const filteredHistory = derivedTimeline.filter((rec) => {
+    if (historyFilter === 'deposit') return rec.type === 'deposit'
+    if (historyFilter === 'pnl') return rec.type === 'pnl'
+    return true
+  })
+
+  if (!open || !investment) return null
 
   return (
     <FullScreenSheet open={open} onClose={onClose} testId="investment-detail-screen">
@@ -233,29 +259,57 @@ export function InvestmentDetailScreen({
               <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 {t.investments.historyTitle}
               </h2>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {records.length} entri
-              </span>
+              {/* Segmented Filter: All, Deposit, PnL */}
+              <div className="flex items-center rounded-lg border bg-muted/40 p-0.5 text-xs font-semibold" data-testid="investment-history-filter">
+                {(['all', 'deposit', 'pnl'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    data-testid={`investment-filter-${tab}`}
+                    onClick={() => setHistoryFilter(tab)}
+                    className={cn(
+                      'px-2 py-0.5 rounded-md transition-all',
+                      historyFilter === tab
+                        ? 'bg-background text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {tab === 'all' ? 'All' : tab === 'deposit' ? 'Deposit' : 'PnL'}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {records.length === 0 ? (
+            {filteredHistory.length === 0 ? (
               <div className="rounded-2xl border bg-card p-8 text-center">
                 <Calendar className="mx-auto mb-2 size-8 text-muted-foreground/50" />
                 <p className="text-sm font-semibold">{t.investments.emptyTitle}</p>
                 <p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto">
-                  Tekan tombol &quot;{t.investments.recordValue}&quot; untuk mulai mencatat histori nilai investasi Anda.
+                  {historyFilter === 'deposit'
+                    ? 'Belum ada entri deposit modal.'
+                    : historyFilter === 'pnl'
+                    ? 'Belum ada entri catatan PnL.'
+                    : t.investments.noRecords}
                 </p>
               </div>
             ) : (
               <div className="overflow-hidden rounded-2xl border bg-card divide-y">
                 {/* Tampilkan urutan kronologis terbaru di atas */}
-                {[...records].reverse().map((rec, rIdx, arr) => {
-                  // Bandingkan dengan record sebelum entri ini di urutan kronologis
-                  const originalIndex = records.findIndex((r) => r.uid === rec.uid)
-                  const prevAmount = originalIndex > 0 ? records[originalIndex - 1].amount : null
-                  const diffVal = prevAmount != null ? rec.amount - prevAmount : 0
-                  const diffPct = prevAmount != null && prevAmount > 0 ? (diffVal / prevAmount) * 100 : 0
+                {[...filteredHistory].reverse().map((rec) => {
+                  const originalIndex = derivedTimeline.findIndex((r: InvestmentRecord) => r.uid === rec.uid)
+                  const isDeposit = rec.type === 'deposit'
+                  const cumPnl = rec.derivedPnl
+                  const pnlPct = rec.derivedCapital > 0 ? (cumPnl / rec.derivedCapital) * 100 : 0
 
+                  let prevPnlVal = 0
+                  for (let i = originalIndex - 1; i >= 0; i--) {
+                    const prevR = derivedTimeline[i]
+                    if (prevR.type === 'pnl') {
+                      prevPnlVal = prevR.derivedPnl
+                      break
+                    }
+                  }
+                  const deltaPnl = cumPnl - prevPnlVal
                   return (
                     <button
                       key={rec.uid}
@@ -275,6 +329,18 @@ export function InvestmentDetailScreen({
                           <span className="text-xs text-muted-foreground tabular-nums">
                             {rec.time}
                           </span>
+                          <span
+                            className={cn(
+                              'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold',
+                              isDeposit
+                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                : cumPnl >= 0
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+                            )}
+                          >
+                            {isDeposit ? 'Deposit' : 'PnL'}
+                          </span>
                         </div>
                         {rec.note && (
                           <p className="mt-0.5 text-xs text-muted-foreground truncate">
@@ -284,31 +350,43 @@ export function InvestmentDetailScreen({
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className="block font-bold text-sm tabular-nums text-foreground">
-                          {formatCurrency(rec.amount, currency)}
-                        </span>
-                        <div className="flex items-center justify-end gap-1.5 text-[11px] tabular-nums">
-                          {rec.deposit != null && rec.deposit > 0 && (
-                            <span className="text-muted-foreground">
-                              Dep: {formatCurrency(rec.deposit, currency)}
+                        {isDeposit ? (
+                          <>
+                            <span className="block font-bold text-sm tabular-nums text-foreground">
+                              {formatCurrency(rec.amount, currency)}
                             </span>
-                          )}
-                          {prevAmount != null && (
+                            <span className="text-[11px] text-muted-foreground tabular-nums">
+                              Total Nilai: {formatCurrency(rec.derivedAmount, currency)}
+                            </span>
+                          </>
+                        ) : (
+                          <>
                             <span
                               className={cn(
-                                'font-semibold',
-                                diffVal > 0
-                                  ? 'text-emerald-500'
-                                  : diffVal < 0
-                                  ? 'text-rose-500'
-                                  : 'text-muted-foreground',
+                                'block font-bold text-sm tabular-nums',
+                                cumPnl >= 0 ? 'text-emerald-500' : 'text-rose-500',
                               )}
                             >
-                              {diffVal > 0 ? '+' : ''}
-                              {formatPercent3(diffPct)}
+                              {cumPnl >= 0 ? '+' : ''}
+                              {formatCurrency(cumPnl, currency)}
                             </span>
-                          )}
-                        </div>
+                            <div className="flex items-center justify-end gap-1 text-[11px] font-semibold tabular-nums">
+                              <span className={cumPnl >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
+                                {cumPnl >= 0 ? '+' : ''}
+                                {formatPercent3(pnlPct)}
+                              </span>
+                              <span
+                                className={cn(
+                                  'text-[10px]',
+                                  deltaPnl >= 0 ? 'text-emerald-500' : 'text-rose-500',
+                                )}
+                              >
+                                ({deltaPnl >= 0 ? '▲ +' : '▼ -'}
+                                {formatCurrency(Math.abs(deltaPnl), currency)})
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </button>
                   )
@@ -339,7 +417,33 @@ export function InvestmentDetailScreen({
         open={recordSheetOpen}
         investmentUid={investment.uid}
         record={editingRecord}
-        previousAmount={currentValue > 0 ? currentValue : null}
+        previousAmount={(() => {
+          if (!editingRecord) {
+            return count > 0 ? derivedTimeline[count - 1].derivedAmount : null
+          }
+          const editIndex = derivedTimeline.findIndex((r: InvestmentRecord) => r.uid === editingRecord.uid)
+          return editIndex > 0 ? derivedTimeline[editIndex - 1].derivedAmount : null
+        })()}
+        runningCapital={(() => {
+          if (!editingRecord) {
+            return totalDeposit
+          }
+          const editIndex = derivedTimeline.findIndex((r: InvestmentRecord) => r.uid === editingRecord.uid)
+          const targetIndex = editIndex > 0 ? editIndex - 1 : 0
+          return derivedTimeline[targetIndex]?.derivedCapital ?? (records[0]?.amount ?? 0)
+        })()}
+        previousPnl={(() => {
+          const targetIndex = editingRecord
+            ? derivedTimeline.findIndex((r: InvestmentRecord) => r.uid === editingRecord.uid)
+            : count
+          for (let i = targetIndex - 1; i >= 0; i--) {
+            const r = derivedTimeline[i]
+            if (r.type === 'pnl') {
+              return r.derivedPnl
+            }
+          }
+          return 0
+        })()}
         currency={currency}
         onClose={() => {
           setRecordSheetOpen(false)

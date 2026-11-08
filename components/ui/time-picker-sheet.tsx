@@ -212,7 +212,7 @@ export function TimePickerSheet({ open, value, onSelect, onClose }: TimePickerSh
 
         {/* Confirm */}
         <div className="px-5 pt-1">
-          <Button className="h-12 w-full text-base" onClick={confirm}>
+          <Button data-testid="time-picker-confirm" className="h-12 w-full text-base" onClick={confirm}>
             Selesai
           </Button>
         </div>

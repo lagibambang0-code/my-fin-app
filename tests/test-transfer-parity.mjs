@@ -86,11 +86,28 @@ assert.equal(bcaGroups[0].income, 100000, 'Receiving asset group.income must be 
 assert.equal(bcaGroups[0].expense, 0, 'Receiving asset group.expense must be 0 (no fee on receiver)')
 
 // For Main Tab Transaksi (neutral view without scopeAssetUid):
-const mainGroups = groupByDate([txNoNote])
-assert.equal(mainGroups.length, 1)
-assert.equal(mainGroups[0].income, 0, 'Main feed transfer must not be operational income')
-assert.equal(mainGroups[0].expense, 0, 'Main feed transfer must not be operational expense')
-console.log('✓ 4. groupByDate POV Per Aset and Tab Transaksi cash flow verified!')
+// Case A: Legacy transfer where fee is directly on the row: fee MUST count as expense!
+const mainGroupsLegacy = groupByDate([txNoNote])
+assert.equal(mainGroupsLegacy.length, 1)
+assert.equal(mainGroupsLegacy[0].income, 0, 'Main feed transfer must not be operational income')
+assert.equal(mainGroupsLegacy[0].expense, 2500, 'Main feed legacy transfer fee must count as operational expense!')
+
+// Case B: Modern transfer with paired fee transaction (InputRoot.java & TxService.java parity):
+const modernTransfer = { ...txNoNote, txUidFee: 'tx_fee_1' }
+const modernFeeTx = {
+  uid: 'tx_fee_1',
+  DO_TYPE: '1',
+  assetUid: 'ast_cash',
+  ZMONEY: '2500',
+  ZCONTENT: 'Biaya transfer',
+  ZDATE: '2026-11-07',
+  txUidFee: 'tx1',
+}
+const mainGroupsModern = groupByDate([modernTransfer, modernFeeTx])
+assert.equal(mainGroupsModern.length, 1)
+assert.equal(mainGroupsModern[0].income, 0)
+assert.equal(mainGroupsModern[0].expense, 2500, 'Modern transfer paired fee must count as operational expense!')
+console.log('✓ 4. groupByDate POV Per Aset and Tab Transaksi cash flow verified (fee included)!')
 console.log('5. Testing Transaction Item Display with Tags (DayAdapter.java:784-798 parity)...')
 const lookupsWithTags = {
   ...mockLookups,

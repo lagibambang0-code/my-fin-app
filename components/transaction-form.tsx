@@ -48,6 +48,7 @@ import {
   createPhoto,
   createTag,
   createTransaction,
+  db,
   genUid,
   getAllAssets,
   getAssetBalances,
@@ -57,6 +58,7 @@ import {
   getTags,
   setTransactionTags,
   softDeletePhoto,
+  softDeleteTransaction,
   syncRepeatSeries,
   updateTransaction,
 } from '@/lib/db'
@@ -144,7 +146,7 @@ function FieldRow({
         divided && 'border-t',
       )}
     >
-      <span className="flex items-center gap-2.5 text-sm text-muted-foreground">
+      <span className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
           {icon}
         </span>
@@ -154,7 +156,7 @@ function FieldRow({
         <span
           data-testid={valueTestId}
           className={cn(
-            'truncate text-sm',
+            'truncate text-xs sm:text-sm',
             value ? 'font-semibold text-foreground' : 'text-muted-foreground',
           )}
         >
@@ -176,7 +178,7 @@ export function TransactionForm({
   onOpenBookmarks,
   onCopy,
 }: TransactionFormProps) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const isEdit = Boolean(transaction?.id)
   const [type, setType] = useState<TrxType>('expense')
   const [date, setDate] = useState(todayIso())
@@ -251,7 +253,8 @@ export function TransactionForm({
     setRaw(startMoney !== 0 ? String(Math.abs(startMoney)) : '')
     setNegative(startMoney < 0)
     setNumpadOpen(true)
-    setFee(Number(source?.FEE || initial?.fee || 0) || 0)
+    const initFee = Number(source?.FEE || initial?.fee || 0) || 0
+    setFee(initFee)
     setFeeSheetOpen(false)
     setCategoryUid(source?.ctgUid ?? initial?.categoryUid ?? null)
     setCategoryLabel(source?.CATEGORY_NAME ?? initial?.categoryName ?? null)
@@ -282,6 +285,12 @@ export function TransactionForm({
       setCurrency(main ?? null)
       setPhotos(photoList)
       setAllTags(tagList)
+      if (initFee === 0 && source?.txUidFee) {
+        const feeRow = await db.transactions.where('uid').equals(source.txUidFee).first()
+        if (feeRow && active) {
+          setFee(Number(feeRow.AMOUNT_ACCOUNT ?? feeRow.ZMONEY) || 0)
+        }
+      }
       setTagUids(initial?.tagUids ?? attached)
     })()
 
@@ -346,9 +355,101 @@ export function TransactionForm({
       return
     }
 
-    const uid = uidRef.current
+    const uid = transaction?.uid ?? uidRef.current
     const timeFormatted = `${time || '12:00'}:00`
 
+    let linkedFeeUid = transaction?.txUidFee ?? null
+    const feeLabel = language === 'en' ? 'Transfer fee' : 'Biaya transfer'
+
+    if (type === 'transfer') {
+      if (fee > 0) {
+        // Money Manager parity (InputRoot.java:1817-1824 & InputUtil.java:89-146):
+        // When a transfer has a fee, Money Manager generates a real expense transaction (DO_TYPE = '1')
+        // on the source asset, bound via txUidFee!
+        const feeTxUid = linkedFeeUid || genUid('tx_fee')
+        linkedFeeUid = feeTxUid
+        const existingFeeTx = await db.transactions.where('uid').equals(feeTxUid).first()
+
+        if (existingFeeTx?.id) {
+          await updateTransaction(existingFeeTx.id, {
+            DO_TYPE: '1',
+            ZDATE: date,
+            WDATE: `${date} ${timeFormatted}`,
+            wtime: timeFormatted,
+            ZMONEY: String(fee),
+            AMOUNT_ACCOUNT: Math.abs(fee),
+            ctgUid: 'cat_transfer_fee',
+            assetUid: assetUid ?? '',
+            toAssetUid: null,
+            ZCONTENT: feeLabel,
+            CATEGORY_NAME: feeLabel,
+            txUidFee: uid,
+            IS_DEL: 0,
+            UTIME: Date.now(),
+          })
+        } else {
+          await createTransaction({
+            uid: feeTxUid,
+            assetUid: assetUid ?? '',
+            CARDDIVIDMONTH: null,
+            ctgUid: 'cat_transfer_fee',
+            toAssetUid: null,
+            ZCONTENT: feeLabel,
+            ZDATE: date,
+            WDATE: `${date} ${timeFormatted}`,
+            wtime: timeFormatted,
+            paid: null,
+            DO_TYPE: '1',
+            ZMONEY: String(fee),
+            txUidTrans: null,
+            ZDATA: null,
+            SMS_RDATE: null,
+            IN_ZMONEY: null,
+            ASSET_NIC: assetName,
+            CATEGORY_NAME: feeLabel,
+            cardDivideUid: null,
+            CARD_DIVIDE_MONTH_STR: null,
+            MARK: 0,
+            txUidFee: uid,
+            SMS_ORIGIN: null,
+            SMS_PARSE_CONTENT: null,
+            IS_DEL: 0,
+            UTIME: Date.now(),
+            currencyUid: currency?.uid ?? 'IDR_IDR',
+            AMOUNT_ACCOUNT: Math.abs(fee),
+            lat: null,
+            lng: null,
+            gstd: null,
+            FEE: 0,
+            RECUR_TYPE: null,
+            RECUR_FREQ: null,
+            INSTALLMENT_MONTHS: null,
+            RECUR_UID: null,
+            isSynced: 0,
+            syncTime: 0,
+            syncVersion: 1,
+          })
+        }
+      } else if (transaction?.txUidFee) {
+        // If fee was removed on edit from this transfer, soft-delete the existing fee transaction
+        const oldFee = await db.transactions.where('uid').equals(transaction.txUidFee).first()
+        if (oldFee?.id) {
+          await db.transactions.update(oldFee.id, { IS_DEL: 1, UTIME: Date.now() })
+        }
+        linkedFeeUid = null
+      }
+    } else if (transaction?.txUidFee) {
+      // Editing an expense transaction that was created as a fee linked to a transfer:
+      // Keep parent transfer's FEE in sync with this amount!
+      const parentTransfer = await db.transactions.where('uid').equals(transaction.txUidFee).first()
+      if (parentTransfer?.id) {
+        await db.transactions.update(parentTransfer.id, {
+          FEE: Math.abs(amount),
+          UTIME: Date.now(),
+        })
+      }
+      linkedFeeUid = transaction.txUidFee
+    }
     if (transaction?.id) {
       await updateTransaction(transaction.id, {
         DO_TYPE: type,
@@ -367,6 +468,7 @@ export function TransactionForm({
         MARK: mark ? 1 : 0,
         ASSET_NIC: assetName,
         CATEGORY_NAME: type === 'transfer' ? 'Transfer' : categoryLabel,
+        txUidFee: linkedFeeUid,
         RECUR_TYPE: recur.recurType,
         RECUR_FREQ: recur.recurFreq,
         INSTALLMENT_MONTHS: recur.installmentMonths,
@@ -395,7 +497,7 @@ export function TransactionForm({
         cardDivideUid: null,
         CARD_DIVIDE_MONTH_STR: null,
         MARK: mark ? 1 : 0,
-        txUidFee: null,
+        txUidFee: linkedFeeUid,
         SMS_ORIGIN: null,
         SMS_PARSE_CONTENT: null,
         IS_DEL: 0,
@@ -508,7 +610,7 @@ export function TransactionForm({
         >
           <ChevronLeft aria-hidden="true" className="size-5" />
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">
+        <h1 className="min-w-0 flex-1 truncate text-base font-bold tracking-tight sm:text-lg">
           {title}
         </h1>
         <Button
@@ -545,7 +647,7 @@ export function TransactionForm({
                   if (option === 'transfer') setNegative(false)
                 }}
                 className={cn(
-                  'rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'rounded-lg px-2 py-1.5 text-xs sm:text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   type === option
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-secondary',
@@ -559,7 +661,7 @@ export function TransactionForm({
           {/* Tanggal & pengulangan */}
           <div className="overflow-hidden rounded-2xl border bg-card">
             <div className="flex min-h-12 items-center justify-between gap-2 px-3.5 py-2">
-              <span className="flex items-center gap-2.5 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
                   <Calendar aria-hidden="true" className="size-3.5" />
                 </span>
@@ -699,7 +801,7 @@ export function TransactionForm({
               <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
                 <PencilLine aria-hidden="true" className="size-3.5" />
               </span>
-              <label htmlFor="trx-note-input" className="shrink-0 text-sm text-muted-foreground">
+              <label htmlFor="trx-note-input" className="shrink-0 text-xs sm:text-sm text-muted-foreground">
                 {t.transaction.note}
               </label>
               <input
@@ -709,7 +811,7 @@ export function TransactionForm({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder={t.transaction.note}
-                className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
             <div className="flex items-start gap-2.5 border-t px-3.5 py-2">
@@ -884,7 +986,7 @@ export function TransactionForm({
                     {currency?.SYMBOL ?? 'Rp'}
                   </span>
                   <p
-                    className="min-w-0 truncate text-2xl leading-none font-bold tabular-nums md:text-3xl"
+                    className="min-w-0 truncate text-xl leading-none font-bold tabular-nums sm:text-2xl md:text-3xl"
                     data-testid="trx-amount-display"
                   >
                     {(negative && Number(raw) > 0 ? '-' : '') + formatTypingAmount(raw, currency)}
@@ -926,7 +1028,7 @@ export function TransactionForm({
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 flex-1 text-sm font-semibold"
+                className="h-10 flex-1 text-xs sm:text-sm font-semibold"
                 data-testid="trx-save-next"
                 onClick={() => save(true)}
               >
@@ -935,7 +1037,7 @@ export function TransactionForm({
             )}
             <Button
               type="button"
-              className="h-10 flex-1 text-sm font-semibold"
+              className="h-10 flex-1 text-xs sm:text-sm font-semibold"
               data-testid="trx-save"
               onClick={() => save(false)}
             >

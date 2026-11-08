@@ -39,6 +39,7 @@ export function InvestmentMergedScreen({
   const [selectedUids, setSelectedUids] = useState<Set<string>>(
     () => new Set(investments.map((i) => i.uid)),
   )
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'deposit' | 'pnl'>('all')
 
   const toggleAsset = (uid: string) => {
     setSelectedUids((prev) => {
@@ -74,6 +75,13 @@ export function InvestmentMergedScreen({
     })
   }, [activeInvestments, recordsByAsset])
 
+  const filteredMergedHistory = useMemo(() => {
+    return mergedHistory.filter((rec) => {
+      if (historyFilter === 'deposit') return rec.type === 'deposit'
+      if (historyFilter === 'pnl') return rec.type === 'pnl'
+      return true
+    })
+  }, [mergedHistory, historyFilter])
   // Hitung Nilai Deposit & Nilai Sekarang Kumulatif Gabungan
   const { totalDeposit, totalCurrentValue } = useMemo(() => {
     let dep = 0
@@ -83,14 +91,15 @@ export function InvestmentMergedScreen({
       const recs = recordsByAsset.get(asset.uid) ?? []
       if (recs.length === 0) continue
 
-      const explicitDeposit = recs.reduce((sum, r) => sum + (r.deposit ?? 0), 0)
-      const assetDeposit = explicitDeposit > 0 ? explicitDeposit : recs[0].amount
-      const assetCurrentVal = recs[recs.length - 1].amount
-
-      dep += assetDeposit
-      curr += assetCurrentVal
+      let assetDep = 0
+      let assetPnl = 0
+      for (const r of recs) {
+        if (r.type === 'deposit') assetDep += r.amount
+        else if (r.type === 'pnl') assetPnl = r.amount
+      }
+      dep += assetDep
+      curr += assetDep + assetPnl
     }
-
     return { totalDeposit: dep, totalCurrentValue: curr }
   }, [activeInvestments, recordsByAsset])
 
@@ -227,55 +236,79 @@ export function InvestmentMergedScreen({
               <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Riwayat Gabungan
               </h2>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {mergedHistory.length} entri (Read-only)
-              </span>
+              {/* Segmented Filter: All, Deposit, PnL */}
+              <div className="flex items-center rounded-lg border bg-muted/40 p-0.5 text-xs font-semibold" data-testid="merged-history-filter">
+                {(['all', 'deposit', 'pnl'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    data-testid={`merged-filter-${tab}`}
+                    onClick={() => setHistoryFilter(tab)}
+                    className={cn(
+                      'px-2 py-0.5 rounded-md transition-all',
+                      historyFilter === tab
+                        ? 'bg-background text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {tab === 'all' ? 'All' : tab === 'deposit' ? 'Deposit' : 'PnL'}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {mergedHistory.length === 0 ? (
+            {filteredMergedHistory.length === 0 ? (
               <div className="rounded-2xl border bg-card p-8 text-center">
                 <Calendar className="mx-auto mb-2 size-8 text-muted-foreground/50" />
                 <p className="text-sm font-semibold">Belum Ada Riwayat Nilai</p>
               </div>
             ) : (
               <div className="overflow-hidden rounded-2xl border bg-card divide-y">
-                {[...mergedHistory].reverse().map((rec) => (
-                  <div
-                    key={`${rec.investmentUid}-${rec.uid}`}
-                    className="flex w-full items-center justify-between p-3.5 text-left"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm tabular-nums">
-                          {formatShortDate(rec.date)}
-                        </span>
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {rec.time}
-                        </span>
-                        {/* Label Asal Aset (Source Asset) */}
-                        <span className="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
-                          {rec.assetName}
+                {[...filteredMergedHistory].reverse().map((rec) => {
+                  const isDeposit = rec.type === 'deposit'
+                  return (
+                    <div
+                      key={`${rec.investmentUid}-${rec.uid}`}
+                      className="flex w-full items-center justify-between p-3.5 text-left"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm tabular-nums">
+                            {formatShortDate(rec.date)}
+                          </span>
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {rec.time}
+                          </span>
+                          {/* Label Asal Aset (Source Asset) */}
+                          <span className="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
+                            {rec.assetName}
+                          </span>
+                          <span
+                            className={cn(
+                              'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold',
+                              isDeposit
+                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                            )}
+                          >
+                            {isDeposit ? 'Deposit' : 'PnL'}
+                          </span>
+                        </div>
+                        {rec.note && (
+                          <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                            {rec.note}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className={cn('block font-bold text-sm tabular-nums', isDeposit ? 'text-foreground' : 'text-emerald-500')}>
+                          {formatCurrency(rec.amount, currency)}
                         </span>
                       </div>
-                      {rec.note && (
-                        <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                          {rec.note}
-                        </p>
-                      )}
                     </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="block font-bold text-sm tabular-nums text-foreground">
-                        {formatCurrency(rec.amount, currency)}
-                      </span>
-                      {rec.deposit != null && rec.deposit > 0 && (
-                        <span className="text-[11px] text-muted-foreground tabular-nums">
-                          Dep: {formatCurrency(rec.deposit, currency)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

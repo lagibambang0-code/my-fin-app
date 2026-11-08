@@ -12,11 +12,14 @@ export type InvestmentChartPoint = {
   key: string
   date: string
   time: string
-  amount: number
-  diff: number
-  diffPercent: number
+  value: number
+  capital: number
+  pnl: number
+  pnlPercent: number
+  deltaPnl: number
   label: string
 }
+
 export function InvestmentChart({
   records,
   currency,
@@ -32,54 +35,81 @@ export function InvestmentChart({
   const [rangeFilter, setRangeFilter] = useState<ChartTimeRange>('7D')
   const [activePoint, setActivePoint] = useState<InvestmentChartPoint | null>(null)
 
+  // Urutkan kronologis terlama ke terbaru
+  const sortedRecords = useMemo(() => {
+    return [...records].sort((a, b) =>
+      a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date),
+    )
+  }, [records])
+
+  // Periksa apakah sudah ada entri PnL (bukan entri deposit)
+  const hasPnl = useMemo(() => {
+    return sortedRecords.some((r) => r.type === 'pnl')
+  }, [sortedRecords])
+
   // Filter records berdasarkan rentang waktu: 7D (default), 30H, atau ALL
   const filteredRecords = useMemo(() => {
-    if (rangeFilter === 'ALL' || records.length <= 1) return records
+    if (rangeFilter === 'ALL' || sortedRecords.length <= 1) return sortedRecords
 
     const now = new Date()
     const days = rangeFilter === '7D' ? 7 : 30
     const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
     const cutoffIso = cutoff.toISOString().slice(0, 10)
 
-    const matched = records.filter((r) => r.date >= cutoffIso)
-    // Jika dalam rentang waktu < 2 data, fallback ke minimal 2 data terakhir agar grafik tetap tampil
-    return matched.length >= 2 ? matched : records.slice(-Math.min(records.length, 5))
-  }, [records, rangeFilter])
-  if (records.length < 2) {
+    const matched = sortedRecords.filter((r) => r.date >= cutoffIso)
+    return matched.length >= 2 ? matched : sortedRecords.slice(-Math.min(sortedRecords.length, 5))
+  }, [sortedRecords, rangeFilter])
+
+  // Jika belum ada entry PnL sama sekali, grafik belum aktif (sesuai arahan: tgl 1 deposit 10.000 belum ada grafik)
+  if (!hasPnl || records.length < 2) {
     return (
       <div
         data-testid={testId}
         className="flex h-32 items-center justify-center rounded-2xl border bg-card p-4 text-center text-xs text-muted-foreground"
       >
-        <span>Catat minimal 2 riwayat nilai untuk melihat grafik pergerakan portofolio.</span>
+        <span>Grafik pergerakan akan aktif setelah Anda mencatat entri PnL pertama.</span>
       </div>
     )
   }
 
-  // Hitung poin dan selisih berdasarkan data terfilter
-  const points: InvestmentChartPoint[] = filteredRecords.map((rec, index) => {
-    const prevAmount = index > 0 ? filteredRecords[index - 1].amount : rec.amount
-    const diff = rec.amount - prevAmount
-    const diffPercent = prevAmount > 0 ? (diff / prevAmount) * 100 : 0
-    return {
+  // Bentuk titik-titik grafik berbasis modal dan nilai portofolio
+  const points: InvestmentChartPoint[] = []
+  let runningCapital = 0
+  let runningPnl = 0
+
+  filteredRecords.forEach((rec, idx) => {
+    const isDeposit = rec.type === 'deposit' || (idx === 0 && !rec.type)
+    if (isDeposit) {
+      runningCapital += rec.amount
+    } else {
+      runningPnl = rec.amount
+    }
+    const val = runningCapital + runningPnl
+    const curPnl = runningPnl
+    const pnlPct = runningCapital > 0 ? (curPnl / runningCapital) * 100 : 0
+    const prevPnl = points.length > 0 ? points[points.length - 1].pnl : 0
+
+    points.push({
       key: rec.uid,
       date: rec.date,
       time: rec.time,
-      amount: rec.amount,
-      diff,
-      diffPercent,
+      value: val,
+      capital: runningCapital,
+      pnl: curPnl,
+      pnlPercent: pnlPct,
+      deltaPnl: curPnl - prevPnl,
       label: formatShortDate(rec.date),
-    }
+    })
   })
-
-  const firstAmount = filteredRecords[0].amount
-  const lastAmount = filteredRecords[filteredRecords.length - 1].amount
-  const isUp = lastAmount >= firstAmount
+  const firstVal = points[0]?.value ?? 0
+  const lastVal = points[points.length - 1]?.value ?? 0
+  const lastPnl = points[points.length - 1]?.pnl ?? 0
+  const isUp = lastPnl >= 0
   const chartColor = isUp ? '#10b981' : '#f43f5e' // emerald-500 : rose-500
 
-  const amounts = filteredRecords.map((r) => r.amount)
-  const min = Math.min(...amounts)
-  const max = Math.max(...amounts)
+  const allVals = points.map((p) => p.value)
+  const min = Math.min(...allVals)
+  const max = Math.max(...allVals)
   const range = max - min || 1
 
   // Dimensi SVG
@@ -91,7 +121,7 @@ export function InvestmentChart({
 
   const coords = points.map((p, index) => {
     const x = padX + (points.length > 1 ? (index / (points.length - 1)) * usableW : usableW / 2)
-    const ratio = (p.amount - min) / range
+    const ratio = (p.value - min) / range
     const y = padY + (1 - ratio) * usableH
     return { ...p, x, y, ratio }
   })
@@ -105,7 +135,6 @@ export function InvestmentChart({
     : ''
 
   const displayedPoint = activePoint ?? points[points.length - 1]
-
   return (
     <section
       data-testid={testId}
@@ -132,9 +161,20 @@ export function InvestmentChart({
               <p className="text-[11px] text-muted-foreground">
                 {displayedPoint ? `${displayedPoint.date} · ${displayedPoint.time}` : 'Pergerakan nilai'}
               </p>
-              <p className="text-sm font-bold tabular-nums text-foreground">
-                {formatCurrency(displayedPoint?.amount ?? lastAmount, currency)}
-              </p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-sm font-bold tabular-nums text-foreground">
+                  {formatCurrency(displayedPoint?.value ?? lastVal, currency)}
+                </span>
+                <span
+                  className={cn(
+                    'text-xs font-semibold tabular-nums',
+                    (displayedPoint?.pnl ?? 0) >= 0 ? 'text-emerald-500' : 'text-rose-500',
+                  )}
+                >
+                  {(displayedPoint?.pnl ?? 0) >= 0 ? '+' : ''}
+                  {formatCurrency(displayedPoint?.pnl ?? 0, currency)} ({formatPercent3(displayedPoint?.pnlPercent ?? 0)})
+                </span>
+              </div>
             </div>
           </div>
 
@@ -164,20 +204,26 @@ export function InvestmentChart({
 
         {displayedPoint && (
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Perubahan titik ini:</span>
-            <span
-              className={cn(
-                'font-semibold tabular-nums',
-                displayedPoint.diff > 0
-                  ? 'text-emerald-500'
-                  : displayedPoint.diff < 0
-                  ? 'text-rose-500'
-                  : 'text-muted-foreground',
+            <span className="text-muted-foreground">
+              Modal: <strong className="text-foreground tabular-nums">{formatCurrency(displayedPoint.capital, currency)}</strong>
+            </span>
+            <span className="text-muted-foreground">
+              PnL:{' '}
+              <span
+                className={cn(
+                  'font-semibold tabular-nums',
+                  displayedPoint.pnl >= 0 ? 'text-emerald-500' : 'text-rose-500',
+                )}
+              >
+                {displayedPoint.pnl >= 0 ? '+' : ''}
+                {formatCurrency(displayedPoint.pnl, currency)} ({formatPercent3(displayedPoint.pnlPercent)})
+              </span>
+              {displayedPoint.deltaPnl !== 0 && (
+                <span className={cn('ml-1 text-[10px]', displayedPoint.deltaPnl >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                  ({displayedPoint.deltaPnl >= 0 ? '▲ +' : '▼ -'}
+                  {formatCurrency(Math.abs(displayedPoint.deltaPnl), currency)})
+                </span>
               )}
-            >
-              {displayedPoint.diff > 0 ? '+' : ''}
-              {formatCurrency(displayedPoint.diff, currency)} ({displayedPoint.diff > 0 ? '+' : ''}
-              {formatPercent3(displayedPoint.diffPercent)})
             </span>
           </div>
         )}
@@ -244,7 +290,7 @@ export function InvestmentChart({
               onMouseEnter={() => setActivePoint(point)}
               onClick={() => setActivePoint(point)}
               className="flex-1 cursor-pointer focus:outline-none"
-              aria-label={`${point.date} ${point.time}: ${formatCurrency(point.amount, currency)}`}
+              aria-label={`${point.date} ${point.time}: ${formatCurrency(point.value, currency)} (Modal: ${formatCurrency(point.capital, currency)})`}
             />
           ))}
         </div>
@@ -252,8 +298,8 @@ export function InvestmentChart({
 
       {/* Label Bawah (Awal & Akhir) */}
       <div className="mt-2 flex justify-between border-t pt-2 text-[10px] text-muted-foreground tabular-nums">
-        <span>{points[0].date} ({formatCurrency(firstAmount, currency)})</span>
-        <span>{points[points.length - 1].date} ({formatCurrency(lastAmount, currency)})</span>
+        <span>{points[0].date} ({formatCurrency(firstVal, currency)})</span>
+        <span>{points[points.length - 1].date} ({formatCurrency(lastVal, currency)})</span>
       </div>
     </section>
   )

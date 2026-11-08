@@ -177,10 +177,10 @@ export function AssetScreen() {
       <header className="sticky top-0 z-30 bg-background/80 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-4 backdrop-blur-xl md:px-10 md:pt-6 md:pb-8">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground md:text-sm">
+            <p className="text-[11px] font-medium tracking-wide text-muted-foreground sm:text-xs md:text-sm">
               {t.asset.subtitle}
             </p>
-            <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t.asset.title}</h1>
+            <h1 className="text-lg font-bold tracking-tight sm:text-xl md:text-2xl">{t.asset.title}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <Button
@@ -256,13 +256,13 @@ export function AssetScreen() {
               return (
                 <section key={group.uid} data-testid={`asset-group-${group.ACC_GROUP_NAME}`}>
                   <div className="mb-1 flex items-baseline justify-between gap-2 px-1">
-                    <h2 className="text-sm font-semibold tracking-wide">
+                    <h2 className="text-xs font-semibold tracking-wide sm:text-sm">
                       {language === 'en'
                         ? (GROUP_NAMES_ID_TO_EN[group.ACC_GROUP_NAME] ?? group.ACC_GROUP_NAME)
                         : (GROUP_NAMES_EN_TO_ID[group.ACC_GROUP_NAME] ?? group.ACC_GROUP_NAME)}
                     </h2>
                     <span
-                      className="text-xs font-medium text-muted-foreground tabular-nums"
+                      className="text-[11px] font-medium text-muted-foreground tabular-nums sm:text-xs"
                       data-testid={`asset-group-total-${group.ACC_GROUP_NAME}`}
                     >
                       {formatCurrency(groupTotal, mainCurrency)}
@@ -302,7 +302,7 @@ export function AssetScreen() {
                         )}
                       >
                         <span className="flex min-w-0 flex-1 items-center gap-2">
-                          <span className="truncate text-sm">{asset.NIC_NAME}</span>
+                          <span className="truncate text-xs sm:text-sm">{asset.NIC_NAME}</span>
                           {asset.IS_SHOW === 0 && (
                             <EyeOff
                               aria-label="Disembunyikan"
@@ -310,7 +310,7 @@ export function AssetScreen() {
                             />
                           )}
                         </span>
-                        <span className="shrink-0 text-sm font-medium tabular-nums">
+                        <span className="shrink-0 text-xs font-medium tabular-nums sm:text-sm">
                           {formatCurrency(balanceFor(asset), currencyFor(asset))}
                         </span>
                         <ChevronRight
@@ -452,16 +452,16 @@ function SummaryItem({
 
   return (
     <div className="min-w-0">
-      <dt className="truncate text-[11px] sm:text-xs text-muted-foreground">{label}</dt>
+      <dt className="truncate text-[10px] sm:text-xs text-muted-foreground">{label}</dt>
       <dd
         data-testid={testId}
         title={value}
         className={cn(
           'mt-0.5 truncate font-semibold tabular-nums tracking-tight',
           isVeryLong
-            ? 'text-[11px] sm:text-xs md:text-sm'
+            ? 'text-[10px] sm:text-xs md:text-sm'
             : isLong
-            ? 'text-[12px] sm:text-[13px] md:text-base'
+            ? 'text-[11px] sm:text-[12px] md:text-base'
             : 'text-xs sm:text-sm md:text-base',
           emphasis && 'text-primary',
         )}

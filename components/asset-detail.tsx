@@ -51,7 +51,8 @@ function assetDelta(tx: Transaction, assetUid: string): number {
   if ((tx.DO_TYPE === 'expense' || tx.DO_TYPE === '1') && tx.assetUid === assetUid) return -amount
   if (tx.DO_TYPE === 'transfer' || tx.DO_TYPE === '3') {
     let delta = 0
-    if (tx.assetUid === assetUid) delta -= amount + (Number(tx.FEE) || 0)
+    const feeAmount = tx.txUidFee ? 0 : (Number(tx.FEE) || 0)
+    if (tx.assetUid === assetUid) delta -= amount + feeAmount
     if (tx.toAssetUid === assetUid && !tx.txUidTrans) delta += Number(tx.IN_ZMONEY) || amount
     return delta
   }
@@ -198,7 +199,7 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
         <Button variant="ghost" size="icon-sm" aria-label="Kembali" onClick={onClose}>
           <ChevronLeft className="size-5" />
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">
+        <h1 className="min-w-0 flex-1 truncate text-base font-bold tracking-tight sm:text-lg">
           {asset.NIC_NAME}
         </h1>
         <Button
@@ -253,7 +254,7 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
                 data-testid={`detail-mode-${m.id}`}
                 onClick={() => setMode(m.id)}
                 className={cn(
-                  'rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 sm:py-2 sm:text-sm',
                   mode === m.id
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-secondary',
@@ -264,7 +265,7 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
             ))}
           </div>
 
-          <div className="mt-4 flex items-center justify-between text-sm">
+          <div className="mt-4 flex items-center justify-between text-xs sm:text-sm">
             <span className="text-muted-foreground">{t.asset.usagePeriod}</span>
             <span className="tabular-nums" data-testid="detail-period-range">
               {formatDotRange(range.start, range.end)}
@@ -288,7 +289,7 @@ export function AssetDetail({ open, asset, onClose, onEdit }: AssetDetailProps) 
             </div>
           ) : (
             <>
-          <h2 className="mt-6 mb-2 text-sm font-semibold">{t.transaction.title}</h2>
+          <h2 className="mt-6 mb-2 text-xs font-semibold sm:text-sm">{t.transaction.title}</h2>
           {periodRows.length === 0 ? (
             <TransactionsEmpty hint={t.stats.noData} />
           ) : (
@@ -392,14 +393,14 @@ function Stat({ label, value, testId }: { label: string; value: string; testId?:
 
   return (
     <div className="rounded-xl border bg-card p-2.5 sm:p-3 min-w-0">
-      <dt className="truncate text-[11px] sm:text-xs text-muted-foreground">{label}</dt>
+      <dt className="truncate text-[10px] sm:text-xs text-muted-foreground">{label}</dt>
       <dd
         className={cn(
           'mt-0.5 truncate font-semibold tabular-nums tracking-tight',
           isVeryLong
-            ? 'text-[11px] sm:text-xs md:text-sm'
+            ? 'text-[10px] sm:text-xs md:text-sm'
             : isLong
-            ? 'text-[12px] sm:text-[13px] md:text-base'
+            ? 'text-[11px] sm:text-[12px] md:text-base'
             : 'text-xs sm:text-sm md:text-base',
         )}
         data-testid={testId}

@@ -88,7 +88,7 @@ export function MonthNavigator({ value, today, onChange, variant = 'month' }: Mo
         aria-label={`${isYear ? 'Pilih tahun' : 'Pilih bulan'}, saat ini ${fullLabel}`}
         data-testid="month-navigator-label"
         className={cn(
-          'flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-base font-semibold tracking-tight tabular-nums transition-colors duration-200 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:gap-2 md:px-4 md:py-2 md:text-xl md:font-bold',
+          'flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-sm font-semibold tracking-tight tabular-nums transition-colors duration-200 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 sm:py-1.5 sm:text-base md:gap-2 md:px-4 md:py-2 md:text-xl md:font-bold',
           open && 'bg-secondary',
         )}
       >

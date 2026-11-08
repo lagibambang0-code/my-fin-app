@@ -94,7 +94,7 @@ export function BottomNav() {
                   href={href}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'flex flex-col items-center gap-1 py-1.5 text-[11px] font-medium transition-all duration-300 ease-out-quart',
+                    'flex flex-col items-center gap-1 py-1.5 text-[10px] sm:text-[11px] font-medium transition-all duration-300 ease-out-quart',
                     active
                       ? 'text-primary'
                       : 'text-muted-foreground hover:text-foreground',

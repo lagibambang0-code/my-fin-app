@@ -91,7 +91,7 @@ export type CardCycleAmounts = {
  */
 export function computeCardCycleAmounts(
   cycles: CardCycles,
-  transactions: { assetUid: string; DO_TYPE: string; ZDATE: string; AMOUNT_ACCOUNT?: number | null; ZMONEY?: string | null }[],
+  transactions: { assetUid: string; DO_TYPE: string; ZDATE: string; AMOUNT_ACCOUNT?: number | null; ZMONEY?: string | null; txUidFee?: string | null; FEE?: number | null }[],
   cardUid: string,
 ): CardCycleAmounts {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -111,7 +111,8 @@ export function computeCardCycleAmounts(
     if (t.assetUid !== cardUid) continue
     const isOut = t.DO_TYPE === '1' || t.DO_TYPE === 'expense' || t.DO_TYPE === '3' || t.DO_TYPE === 'transfer' || t.DO_TYPE === '8'
     const isIn = t.DO_TYPE === '0' || t.DO_TYPE === 'income' || t.DO_TYPE === '4' || t.DO_TYPE === '7'
-    const amount = Number(t.AMOUNT_ACCOUNT ?? t.ZMONEY) || 0
+    const feeAmount = (t.DO_TYPE === '3' || t.DO_TYPE === 'transfer') && !t.txUidFee ? (Number(t.FEE) || 0) : 0
+    const amount = (Number(t.AMOUNT_ACCOUNT ?? t.ZMONEY) || 0) + feeAmount
 
     if (t.ZDATE < payableStart) {
       if (isOut) olderCharges += amount

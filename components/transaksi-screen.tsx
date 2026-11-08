@@ -375,7 +375,7 @@ export function TransaksiScreen() {
               data-testid={`trx-view-${item.id}`}
               onClick={() => setView(item.id)}
               className={cn(
-                'shrink-0 rounded-full px-2 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 sm:text-sm',
+                'shrink-0 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 sm:py-1.5 sm:text-sm',
                 view === item.id
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
@@ -587,16 +587,16 @@ function SummaryCell({
 
   return (
     <div className="min-w-0">
-      <dt className="truncate text-[11px] sm:text-xs text-muted-foreground">{label}</dt>
+      <dt className="truncate text-[10px] sm:text-xs text-muted-foreground">{label}</dt>
       <dd
         data-testid={testId}
         title={formatted}
         className={cn(
           'mt-0.5 truncate font-semibold tabular-nums tracking-tight',
           isVeryLong
-            ? 'text-[11px] sm:text-xs md:text-sm'
+            ? 'text-[10px] sm:text-xs md:text-sm'
             : isLong
-            ? 'text-[12px] sm:text-[13px] md:text-base'
+            ? 'text-[11px] sm:text-[12px] md:text-base'
             : 'text-xs sm:text-sm md:text-base',
           emphasis && 'text-primary',
           value < 0 && 'text-destructive',

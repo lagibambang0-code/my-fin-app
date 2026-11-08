@@ -314,7 +314,7 @@ export function StatistikScreen() {
               {prevButton}
               <span
                 data-testid="stats-period-label"
-                className="truncate px-1 text-[13px] font-semibold tabular-nums sm:text-sm md:text-base"
+                className="truncate px-1 text-xs font-semibold tabular-nums sm:text-sm md:text-base"
               >
                 {range.label}
               </span>
@@ -325,7 +325,7 @@ export function StatistikScreen() {
               type="button"
               data-testid="stats-period-button"
               onClick={() => setPeriodOpen(true)}
-              className="flex min-w-0 items-center gap-1.5 rounded-xl px-2 py-1.5 text-[13px] font-semibold tabular-nums transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+              className="flex min-w-0 items-center gap-1.5 rounded-xl px-2 py-1 text-xs font-semibold tabular-nums transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-2.5 sm:py-1.5 sm:text-sm"
             >
               <CalendarDays aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">
@@ -376,12 +376,12 @@ export function StatistikScreen() {
                     : 'text-muted-foreground hover:bg-secondary',
                 )}
               >
-                <span className="text-xs font-medium">
+                <span className="text-[11px] sm:text-xs font-medium">
                   {id === 'income' ? t.stats.income : t.stats.expense}
                 </span>
                 <span
                   data-testid={`stats-total-${id}`}
-                  className="text-sm font-semibold tabular-nums"
+                  className="text-xs sm:text-sm font-semibold tabular-nums"
                 >
                   {formatCurrency(total, currency)}
                 </span>
@@ -401,7 +401,7 @@ export function StatistikScreen() {
             </span>
             <span
               data-testid="stats-daily-average-value"
-              className="text-sm font-bold tabular-nums text-foreground"
+              className="text-xs sm:text-sm font-bold tabular-nums text-foreground"
             >
               {formatCurrency(averages.dailyAverage, currency)}
             </span>
@@ -416,7 +416,7 @@ export function StatistikScreen() {
             </span>
             <span
               data-testid="stats-active-average-value"
-              className="text-sm font-bold tabular-nums text-foreground"
+              className="text-xs sm:text-sm font-bold tabular-nums text-foreground"
             >
               {formatCurrency(averages.activeDayAverage, currency)}
             </span>
@@ -470,11 +470,11 @@ export function StatistikScreen() {
                       className="size-2.5 shrink-0 rounded-full"
                       style={{ background: stat.color }}
                     />
-                    <span className="truncate text-sm font-medium">{stat.name}</span>
+                    <span className="truncate text-xs sm:text-sm font-medium">{stat.name}</span>
                   </span>
                   <span
                     data-testid={`stats-amount-${stat.uid}`}
-                    className="shrink-0 text-sm font-semibold tabular-nums"
+                    className="shrink-0 text-xs sm:text-sm font-semibold tabular-nums"
                   >
                     {formatCurrency(stat.amount, currency)}
                   </span>

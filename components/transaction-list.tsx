@@ -160,7 +160,7 @@ export function TransactionRow({
             {catDetails.main}
           </p>
           {catDetails.sub && (
-            <p className="truncate text-[11px] text-muted-foreground" title={catDetails.sub}>
+            <p className="truncate text-[10px] sm:text-[11px] text-muted-foreground" title={catDetails.sub}>
               {catDetails.sub}
             </p>
           )}
@@ -169,7 +169,7 @@ export function TransactionRow({
         {/* Kolom 2 (Tengah): Catatan (ZCONTENT) / Akun & Waktu (wtime) */}
         <div className="min-w-0 flex-1 text-left">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-medium text-foreground">
+            <p className="truncate text-xs sm:text-sm font-medium text-foreground">
               {title}
             </p>
             {tx.MARK === 1 && (
@@ -180,14 +180,14 @@ export function TransactionRow({
             )}
           </div>
           <p
-            className="truncate text-xs text-muted-foreground"
+            className="truncate text-[11px] sm:text-xs text-muted-foreground"
             data-testid={`tx-asset-${tx.uid}`}
           >
             {subTitle}
           </p>
           {hasNote && tx.ZDATA && (
             <span
-              className="mt-0.5 block truncate text-[11px] text-muted-foreground/75"
+              className="mt-0.5 block truncate text-[10px] sm:text-[11px] text-muted-foreground/75"
               data-testid={`tx-note-${tx.uid}`}
             >
               {tx.ZDATA}
@@ -195,21 +195,18 @@ export function TransactionRow({
           )}
         </div>
 
-        {/* Kolom 3 (Kanan): Nominal Transaksi & Biaya */}
+        {/* Kolom 3 (Kanan): Nominal Transaksi (DayAdapter.java:668-683 parity) */}
         <div className="shrink-0 text-right">
           {(() => {
             const displayAmount = formatCurrency(amount, lookups.currency)
             let amountColor = 'text-foreground font-medium'
-            let showFee = false
 
             if (scopeAssetUid) {
               if (isTransfer) {
                 if (tx.assetUid === scopeAssetUid) {
                   amountColor = 'text-destructive font-semibold'
-                  showFee = Number(tx.FEE) > 0
                 } else if (tx.toAssetUid === scopeAssetUid) {
                   amountColor = 'text-blue-600 dark:text-blue-400 font-semibold'
-                  showFee = false
                 }
               } else if (isIncome || (isAdj && amount >= 0)) {
                 amountColor = 'text-blue-600 dark:text-blue-400 font-semibold'
@@ -219,7 +216,6 @@ export function TransactionRow({
             } else {
               if (isTransfer) {
                 amountColor = 'text-foreground font-medium'
-                showFee = Number(tx.FEE) > 0
               } else if (isIncome || (isAdj && amount >= 0)) {
                 amountColor = 'text-blue-600 dark:text-blue-400 font-semibold'
               } else if (isExpense || (isAdj && amount < 0)) {
@@ -228,19 +224,12 @@ export function TransactionRow({
             }
 
             return (
-              <>
-                <span
-                  data-testid={`tx-amount-${tx.uid}`}
-                  className={cn('text-sm tabular-nums', amountColor)}
-                >
-                  {displayAmount}
-                </span>
-                {showFee && (
-                  <span className="block text-[11px] text-muted-foreground tabular-nums">
-                    +Biaya: {formatCurrency(Number(tx.FEE), lookups.currency)}
-                  </span>
-                )}
-              </>
+              <span
+                data-testid={`tx-amount-${tx.uid}`}
+                className={cn('text-xs sm:text-sm font-semibold tabular-nums', amountColor)}
+              >
+                {displayAmount}
+              </span>
             )
           })()}
         </div>
@@ -331,12 +320,12 @@ export function DailyTransactionList({
                 tabIndex={onAddDate && !bulkMode ? 0 : undefined}
                 aria-label={`Tambah transaksi pada ${group.date}`}
               >
-                <span className="text-lg font-bold tabular-nums text-foreground leading-none">
+                <span className="text-base sm:text-lg font-bold tabular-nums text-foreground leading-none">
                   {String(date.getDate()).padStart(2, '0')}
                 </span>
                 <span
                   className={cn(
-                    'rounded px-1.5 py-0.5 text-[11px] font-semibold leading-tight',
+                    'rounded px-1.5 py-0.5 text-[10px] sm:text-[11px] font-semibold leading-tight',
                     date.getDay() === 0 && 'bg-red-500/15 text-red-600 dark:text-red-400',
                     date.getDay() === 6 && 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
                     date.getDay() !== 0 && date.getDay() !== 6 && 'bg-secondary text-muted-foreground',
@@ -344,12 +333,12 @@ export function DailyTransactionList({
                 >
                   {WEEKDAYS_SHORT[date.getDay()]}
                 </span>
-                <span className="text-xs text-muted-foreground tabular-nums">
+                <span className="text-[11px] sm:text-xs text-muted-foreground tabular-nums">
                   {formatMonthDotYear(group.date)}
                 </span>
               </h2>
               <p
-                className="flex items-center gap-2.5 text-xs tabular-nums"
+                className="flex items-center gap-2 text-[11px] sm:text-xs tabular-nums"
                 data-testid={`day-total-${group.date}`}
               >
                 {group.income > 0 && (

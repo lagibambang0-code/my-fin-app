@@ -266,10 +266,10 @@ export function CategoryList({ categoryType }: { categoryType: CategoryType }) {
             <ChevronLeft className="size-5" />
           </Button>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground sm:text-xs">
               {t.settings.sectionSettings}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">{title}</h1>
+            <h1 className="truncate text-base font-bold tracking-tight sm:text-lg">{title}</h1>
           </div>
           <Button aria-label="Tambah kategori" data-testid="add-category" onClick={openAdd}>
             <Plus className="size-4" />

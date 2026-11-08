@@ -164,10 +164,10 @@ export function AssetGroupManager() {
             <ChevronLeft className="size-5" />
           </Button>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+            <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase sm:text-xs">
               {t.settings.manageAsset}
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight">{t.asset.groups}</h1>
+            <h1 className="truncate text-base font-bold tracking-tight sm:text-lg">{t.asset.groups}</h1>
           </div>
           <Button aria-label={t.asset.addGroup} data-testid="add-group" onClick={openAdd}>
             <Plus className="size-4" />

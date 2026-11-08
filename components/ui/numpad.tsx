@@ -116,7 +116,7 @@ export function Numpad({
         disabled={disabled}
         onClick={() => onKey(key)}
         className={cn(
-          'flex h-10 items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-base font-semibold tabular-nums transition-colors duration-150 md:h-12',
+          'flex h-10 items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-sm sm:text-base font-semibold tabular-nums transition-colors duration-150 md:h-12',
           'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-accent',
           disabled && 'pointer-events-none opacity-40',
         )}
