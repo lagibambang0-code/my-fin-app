@@ -32,9 +32,9 @@ import { FullScreenSheet, Overlay } from '@/components/ui/overlay'
 import { DatePickerSheet } from '@/components/ui/date-picker-sheet'
 import { TimePickerSheet } from '@/components/ui/time-picker-sheet'
 import { AmountSheet } from '@/components/ui/amount-sheet'
-import { PickerSheet, type PickerItem } from '@/components/ui/picker-sheet'
+import { PickerView, type PickerItem } from '@/components/ui/picker-sheet'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { CategoryPicker } from '@/components/transaction-category-picker'
+import { CategoryPickerView } from '@/components/transaction-category-picker'
 import { TransactionTagPicker } from '@/components/transaction-tag-picker'
 import { RecurringSheet, type RecurringValue } from '@/components/recurring-sheet'
 import { useTranslation } from '@/components/language-provider'
@@ -118,6 +118,8 @@ const EMPTY_RECUR: RecurringValue = {
   installmentMonths: null,
 }
 
+type ActiveDrawer = 'numpad' | 'category' | 'asset_from' | 'asset_to' | null
+
 /** Tappable picker row shared by the Kategori / Aset / Berulang fields. */
 function FieldRow({
   testId,
@@ -128,6 +130,7 @@ function FieldRow({
   placeholder,
   onAction,
   divided = true,
+  rightAction,
 }: {
   testId: string
   valueTestId?: string
@@ -137,36 +140,37 @@ function FieldRow({
   placeholder: string
   onAction: () => void
   divided?: boolean
+  rightAction?: ReactNode
 }) {
   return (
-    <button
-      type="button"
-      data-testid={testId}
-      onClick={onAction}
-      className={cn(
-        'flex min-h-12 w-full items-center justify-between gap-3 px-3.5 py-2 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-        divided && 'border-t',
-      )}
-    >
-      <span className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
-          {icon}
+    <div className={cn('relative flex items-center', divided && 'border-t')}>
+      <button
+        type="button"
+        data-testid={testId}
+        onClick={onAction}
+        className="flex min-h-12 flex-1 items-center justify-between gap-3 px-3.5 py-2 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary/60 text-secondary-foreground">
+            {icon}
+          </span>
+          {label}
         </span>
-        {label}
-      </span>
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span
-          data-testid={valueTestId}
-          className={cn(
-            'truncate text-xs sm:text-sm',
-            value ? 'font-semibold text-foreground' : 'text-muted-foreground',
-          )}
-        >
-          {value ?? placeholder}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span
+            data-testid={valueTestId}
+            className={cn(
+              'truncate text-xs sm:text-sm',
+              value ? 'font-semibold text-foreground' : 'text-muted-foreground',
+            )}
+          >
+            {value ?? placeholder}
+          </span>
+          {!rightAction && <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />}
         </span>
-        <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-      </span>
-    </button>
+      </button>
+      {rightAction && <div className="pr-3.5 shrink-0">{rightAction}</div>}
+    </div>
   )
 }
 
@@ -192,7 +196,7 @@ export function TransactionForm({
   const [timePickerOpen, setTimePickerOpen] = useState(false)
   const [raw, setRaw] = useState('')
   const [negative, setNegative] = useState(false)
-  const [numpadOpen, setNumpadOpen] = useState(false)
+  const [activeSheet, setActiveSheet] = useState<ActiveDrawer>(null)
   const [fee, setFee] = useState(0)
   const [feeSheetOpen, setFeeSheetOpen] = useState(false)
   const [categoryUid, setCategoryUid] = useState<string | null>(null)
@@ -205,6 +209,8 @@ export function TransactionForm({
   const [recur, setRecur] = useState<RecurringValue>(EMPTY_RECUR)
   const [allTags, setAllTags] = useState<TagRecord[]>([])
   const [tagUids, setTagUids] = useState<string[]>([])
+  const [origTagUids, setOrigTagUids] = useState<string[]>([])
+  const [photoDeleted, setPhotoDeleted] = useState(false)
 
   const [assets, setAssets] = useState<Asset[]>([])
   const [balances, setBalances] = useState<Map<string, number>>(new Map())
@@ -212,9 +218,7 @@ export function TransactionForm({
   const [photos, setPhotos] = useState<Photo[]>([])
   const [newPhotos, setNewPhotos] = useState<{ uid: string; dataUrl: string; name: string }[]>([])
 
-  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [tagPickerOpen, setTagPickerOpen] = useState(false)
-  const [assetPicker, setAssetPicker] = useState<'from' | 'to' | null>(null)
   const [recurringOpen, setRecurringOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [copyOpen, setCopyOpen] = useState(false)
@@ -225,6 +229,7 @@ export function TransactionForm({
 
   const fileRef = useRef<HTMLInputElement>(null)
   const noteInputRef = useRef<HTMLInputElement>(null)
+  const formScrollRef = useRef<HTMLDivElement>(null)
   // Stable uid per form session so photos can attach before the first save.
   const uidRef = useRef(transaction?.uid ?? genUid('trx'))
 
@@ -263,7 +268,7 @@ export function TransactionForm({
     setRaw(startMoney !== 0 ? String(Math.abs(startMoney)) : '')
     setNegative(startMoney < 0)
     const isNew = !source && !initial?.categoryUid && !initial?.amount
-    setNumpadOpen(isNew && !isEdit)
+    setActiveSheet(isNew && !isEdit ? 'numpad' : null)
     const initFee = Number(source?.FEE || initial?.fee || 0) || 0
     setFee(initFee)
     setFeeSheetOpen(false)
@@ -280,6 +285,8 @@ export function TransactionForm({
       installmentMonths: source?.INSTALLMENT_MONTHS ?? initial?.installmentMonths ?? null,
     })
     setNewPhotos([])
+    setPhotoDeleted(false)
+    setOrigTagUids([])
 
     ;(async () => {
       const [assetList, balanceMap, main, photoList, tagList, attached] = await Promise.all([
@@ -302,7 +309,9 @@ export function TransactionForm({
           setFee(Number(feeRow.AMOUNT_ACCOUNT ?? feeRow.ZMONEY) || 0)
         }
       }
-      setTagUids(initial?.tagUids ?? attached)
+      const initialTags = initial?.tagUids ?? attached
+      setTagUids(initialTags)
+      setOrigTagUids(initialTags)
     })()
 
     return () => {
@@ -347,23 +356,193 @@ export function TransactionForm({
     return null
   }, [recur])
 
-  const validate = (): string[] => {
-    const list: string[] = []
-    if (type === 'transfer') {
-      if (!assetUid || !toAssetUid) list.push('Pilih aset sumber (Uang keluar) dan aset tujuan (Uang masuk).')
-      else if (assetUid === toAssetUid) list.push('Aset sumber dan tujuan tidak boleh sama.')
+  const tagsChanged = useMemo(() => {
+    if (tagUids.length !== origTagUids.length) return true
+    const s = new Set(origTagUids)
+    return tagUids.some((uid) => !s.has(uid))
+  }, [tagUids, origTagUids])
+
+  const isDirty = useMemo(() => {
+    if (!isEdit || !transaction) return false
+    const origMoney = Number(transaction.ZMONEY) || 0
+    if (amount !== origMoney) return true
+    if (date !== (transaction.ZDATE ?? '')) return true
+    const origTime = transaction.wtime ? transaction.wtime.slice(0, 5) : ''
+    if (time !== origTime) return true
+    const rawDoType = transaction.DO_TYPE
+    const origType =
+      rawDoType === '0' || rawDoType === 'income'
+        ? 'income'
+        : rawDoType === '3' || rawDoType === '4' || rawDoType === 'transfer'
+        ? 'transfer'
+        : rawDoType === '1' || rawDoType === 'expense'
+        ? 'expense'
+        : 'expense'
+    if (type !== origType) return true
+    if ((categoryUid ?? '') !== (transaction.ctgUid ?? '')) return true
+    if ((assetUid ?? '') !== (transaction.assetUid ?? '')) return true
+    if ((toAssetUid ?? '') !== (transaction.toAssetUid ?? '')) return true
+    const origFee = Number(transaction.FEE || 0)
+    if (fee !== origFee) return true
+    if (note !== (transaction.ZCONTENT ?? '')) return true
+    if (description !== (transaction.ZDATA ?? '')) return true
+    const origMark = (transaction.MARK ?? 0) === 1
+    if (mark !== origMark) return true
+    if (newPhotos.length > 0 || photoDeleted) return true
+    if (tagsChanged) return true
+    if ((recur.recurType ?? null) !== (transaction.RECUR_TYPE ?? null)) return true
+    if ((recur.recurFreq ?? null) !== (transaction.RECUR_FREQ ?? null)) return true
+    if ((recur.installmentMonths ?? null) !== (transaction.INSTALLMENT_MONTHS ?? null)) return true
+    return false
+  }, [
+    isEdit,
+    transaction,
+    amount,
+    date,
+    time,
+    type,
+    categoryUid,
+    assetUid,
+    toAssetUid,
+    fee,
+    note,
+    description,
+    mark,
+    newPhotos.length,
+    photoDeleted,
+    tagsChanged,
+    recur,
+  ])
+
+  const focusNoteAndScrollDown = () => {
+    setTimeout(() => {
+      noteInputRef.current?.focus()
+      formScrollRef.current?.scrollTo({
+        top: formScrollRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }, 150)
+  }
+
+  const handleNumpadDone = () => {
+    if (!isEdit) {
+      if (type !== 'transfer') {
+        if (!categoryUid) {
+          setActiveSheet('category')
+        } else if (!assetUid) {
+          setActiveSheet('asset_from')
+        } else {
+          setActiveSheet(null)
+          if (!note) focusNoteAndScrollDown()
+        }
+      } else {
+        if (!assetUid) {
+          setActiveSheet('asset_from')
+        } else if (!toAssetUid) {
+          setActiveSheet('asset_to')
+        } else {
+          setActiveSheet(null)
+          if (!note) focusNoteAndScrollDown()
+        }
+      }
     } else {
-      if (!categoryUid) list.push('Kategori belum dipilih.')
-      if (!assetUid) list.push('Aset belum dipilih.')
+      setActiveSheet(null)
     }
-    return list
+  }
+
+  const handleCategorySelect = (category: Category, parent: Category | null) => {
+    setCategoryUid(category.uid)
+    setCategoryLabel(parent ? `${parent.NAME} › ${category.NAME}` : category.NAME)
+    if (!isEdit) {
+      const hasAmount = raw !== '' && Number(raw) > 0
+      if (!hasAmount) {
+        setActiveSheet('numpad')
+      } else if (!assetUid) {
+        setActiveSheet('asset_from')
+      } else {
+        setActiveSheet(null)
+        if (!note) focusNoteAndScrollDown()
+      }
+    } else {
+      setActiveSheet(null)
+    }
+  }
+
+  const handleAssetSelect = (value: string) => {
+    if (activeSheet === 'asset_to') {
+      setToAssetUid(value)
+      if (!isEdit) {
+        const hasAmount = raw !== '' && Number(raw) > 0
+        if (!assetUid) {
+          setActiveSheet('asset_from')
+        } else if (!hasAmount) {
+          setActiveSheet('numpad')
+        } else {
+          setActiveSheet(null)
+          if (!note) focusNoteAndScrollDown()
+        }
+      } else {
+        setActiveSheet(null)
+      }
+    } else {
+      setAssetUid(value)
+      if (!isEdit) {
+        const hasAmount = raw !== '' && Number(raw) > 0
+        if (type === 'transfer') {
+          if (!toAssetUid) {
+            setActiveSheet('asset_to')
+          } else if (!hasAmount) {
+            setActiveSheet('numpad')
+          } else {
+            setActiveSheet(null)
+            if (!note) focusNoteAndScrollDown()
+          }
+        } else {
+          if (!hasAmount) {
+            setActiveSheet('numpad')
+          } else if (!categoryUid) {
+            setActiveSheet('category')
+          } else {
+            setActiveSheet(null)
+            if (!note) focusNoteAndScrollDown()
+          }
+        }
+      } else {
+        setActiveSheet(null)
+      }
+    }
   }
 
   const save = async (keepOpen: boolean) => {
-    const found = validate()
-    if (found.length > 0) {
-      for (const message of found) toast.error(message)
+    const hasAmount = raw !== '' && Number(raw) > 0
+    if (!hasAmount) {
+      setActiveSheet('numpad')
       return
+    }
+
+    if (type === 'transfer') {
+      if (!assetUid) {
+        setActiveSheet('asset_from')
+        return
+      }
+      if (!toAssetUid) {
+        setActiveSheet('asset_to')
+        return
+      }
+      if (assetUid === toAssetUid) {
+        toast.error('Aset sumber dan tujuan tidak boleh sama.')
+        setActiveSheet('asset_to')
+        return
+      }
+    } else {
+      if (!categoryUid) {
+        setActiveSheet('category')
+        return
+      }
+      if (!assetUid) {
+        setActiveSheet('asset_from')
+        return
+      }
     }
 
     const uid = transaction?.uid ?? uidRef.current
@@ -563,7 +742,7 @@ export function TransactionForm({
 
       setRaw('')
       setNegative(false)
-      setNumpadOpen(true)
+      setActiveSheet('numpad')
       setFee(0)
       setFeeSheetOpen(false)
       setCategoryUid(null)
@@ -584,6 +763,7 @@ export function TransactionForm({
   const removePhoto = async (photo: Photo) => {
     if (photo.uid) await softDeletePhoto(photo.uid)
     setPhotos((list) => list.filter((p) => p.uid !== photo.uid))
+    setPhotoDeleted(true)
   }
 
   const handleFile = (files: FileList | null) => {
@@ -604,6 +784,7 @@ export function TransactionForm({
   const weekday = WEEKDAYS_SHORT[dateValue.getDay()]
   const relative = relativeDateLabel(date)
   const showsCategory = type !== 'transfer'
+  const currencySymbol = currency?.SYMBOL ?? 'Rp'
   const allPhotos = [
     ...photos.map((p) => ({ uid: p.uid, dataUrl: p.FILE_PATH, pending: false as const })),
     ...newPhotos.map((p) => ({ uid: p.uid, dataUrl: p.dataUrl, pending: true as const })),
@@ -639,7 +820,7 @@ export function TransactionForm({
         </Button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={formScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
         <div className="mx-auto w-full max-w-lg space-y-3 px-3.5 py-3">
           <div
             role="tablist"
@@ -753,14 +934,29 @@ export function TransactionForm({
           {showsCategory ? (
             <div className="overflow-hidden rounded-2xl border bg-card">
               <FieldRow
+                testId="trx-total-button"
+                valueTestId="trx-amount-display"
+                icon={<Coins aria-hidden="true" className="size-4 text-primary" />}
+                label="Total"
+                value={
+                  raw
+                    ? (negative && Number(raw) > 0 ? `-${currencySymbol} ` : `${currencySymbol} `) +
+                      formatTypingAmount(raw, currency)
+                    : null
+                }
+                placeholder={`${currencySymbol} 0`}
+                divided={false}
+                onAction={() => setActiveSheet(activeSheet === 'numpad' ? null : 'numpad')}
+              />
+              <FieldRow
                 testId="trx-category-button"
                 valueTestId="trx-category-value"
                 icon={<Tag aria-hidden="true" className="size-4" />}
                 label={t.transaction.category}
                 value={categoryLabel}
                 placeholder={t.budget.selectCategory}
-                divided={false}
-                onAction={() => setCategoryPickerOpen(true)}
+                divided={true}
+                onAction={() => setActiveSheet('category')}
               />
               <FieldRow
                 testId="trx-asset-button"
@@ -769,21 +965,50 @@ export function TransactionForm({
                 label={t.transaction.account}
                 value={assetName}
                 placeholder={t.transaction.selectAccount}
-                onAction={() => setAssetPicker('from')}
+                divided={true}
+                onAction={() => setActiveSheet('asset_from')}
               />
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border bg-card">
               <FieldRow
-                testId="trx-fee-button"
-                valueTestId="trx-fee-value"
-                icon={<Coins aria-hidden="true" className="size-4" />}
-                label={t.transaction.fee}
-                value={fee > 0 ? formatCurrency(fee, currency) : null}
-                placeholder={formatCurrency(0, currency)}
+                testId="trx-total-button"
+                valueTestId="trx-amount-display"
+                icon={<Coins aria-hidden="true" className="size-4 text-primary" />}
+                label="Total"
+                value={raw ? `${currencySymbol} ${formatTypingAmount(raw, currency)}` : null}
+                placeholder={`${currencySymbol} 0`}
                 divided={false}
-                onAction={() => setFeeSheetOpen(true)}
+                onAction={() => setActiveSheet(activeSheet === 'numpad' ? null : 'numpad')}
+                rightAction={
+                  fee === 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid="trx-fee-button"
+                      onClick={() => setFeeSheetOpen(true)}
+                      className="h-7 gap-1 px-2 text-xs font-medium"
+                    >
+                      <Coins className="size-3 text-muted-foreground" />
+                      <span data-testid="trx-quick-fee-btn">+ Biaya</span>
+                    </Button>
+                  ) : undefined
+                }
               />
+
+              {fee > 0 && (
+                <FieldRow
+                  testId="trx-fee-button"
+                  valueTestId="trx-fee-value"
+                  icon={<Coins aria-hidden="true" className="size-4" />}
+                  label={t.transaction.fee}
+                  value={formatCurrency(fee, currency)}
+                  placeholder={formatCurrency(0, currency)}
+                  divided={true}
+                  onAction={() => setFeeSheetOpen(true)}
+                />
+              )}
 
               <div className="relative">
                 <FieldRow
@@ -793,7 +1018,8 @@ export function TransactionForm({
                   label={t.transaction.fromAccount}
                   value={assetName}
                   placeholder={t.transaction.selectAccount}
-                  onAction={() => setAssetPicker('from')}
+                  divided={true}
+                  onAction={() => setActiveSheet('asset_from')}
                 />
                 <FieldRow
                   testId="trx-to-asset-button"
@@ -802,7 +1028,8 @@ export function TransactionForm({
                   label={t.transaction.toAccount}
                   value={toAssetName}
                   placeholder={t.transaction.selectAccount}
-                  onAction={() => setAssetPicker('to')}
+                  divided={true}
+                  onAction={() => setActiveSheet('asset_to')}
                 />
                 <button
                   type="button"
@@ -832,7 +1059,7 @@ export function TransactionForm({
                 data-testid="trx-note-input"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                onFocus={() => setNumpadOpen(false)}
+                onFocus={() => setActiveSheet(null)}
                 placeholder={t.transaction.note}
                 className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
@@ -943,158 +1170,162 @@ export function TransactionForm({
             </div>
           </div>
 
-          {/* Aksi khusus mode edit */}
-          {isEdit && (
-            <div className="grid grid-cols-3 gap-2">
+          {/* Tombol aksi form */}
+          {isEdit ? (
+            <div className="space-y-2 pt-1 pb-4">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
+                  data-testid="trx-copy-button"
+                  onClick={() => {
+                    setCopyDate('today')
+                    setCopyOpen(true)
+                  }}
+                >
+                  <Copy className="size-4" />
+                  Salin
+                </Button>
+                <Button
+                  type="button"
+                  variant={mark ? 'secondary' : 'outline'}
+                  className="h-11"
+                  aria-pressed={mark}
+                  data-testid="trx-mark-button"
+                  onClick={() => setMark((value) => !value)}
+                >
+                  <Star className={cn('size-4', mark && 'fill-primary text-primary')} />
+                  Bookmark
+                </Button>
+              </div>
+
+              {isDirty ? (
+                <Button
+                  type="button"
+                  className="h-11 w-full font-semibold"
+                  data-testid="trx-save"
+                  onClick={() => save(false)}
+                >
+                  <Check className="size-4" />
+                  {t.common.save}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-11 w-full font-semibold"
+                  data-testid="trx-delete-button"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Hapus
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="flex gap-2 pt-1 pb-4">
               <Button
                 type="button"
-                variant="destructive"
-                className="h-11"
-                data-testid="trx-delete-button"
-                onClick={() => setConfirmDelete(true)}
+                className="h-11 flex-[7] font-semibold"
+                data-testid="trx-save"
+                onClick={() => save(false)}
               >
-                <Trash2 className="size-4" />
-                Hapus
+                {t.common.save}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11"
-                data-testid="trx-copy-button"
-                onClick={() => {
-                  setCopyDate('today')
-                  setCopyOpen(true)
-                }}
+                className="h-11 flex-[3] font-semibold"
+                data-testid="trx-save-next"
+                onClick={() => save(true)}
               >
-                <Copy className="size-4" />
-                Salin
-              </Button>
-              <Button
-                type="button"
-                variant={mark ? 'secondary' : 'outline'}
-                className="h-11"
-                aria-pressed={mark}
-                data-testid="trx-mark-button"
-                onClick={() => setMark((value) => !value)}
-              >
-                <Star className={cn('size-4', mark && 'fill-primary text-primary')} />
-                Bookmark
+                {t.common.continue}
               </Button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Numpad */}
-      <div className="border-t bg-card/80 px-3 pt-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
-        <div className="mx-auto w-full max-w-lg">
-          {/* Total display — always visible, tap to toggle numpad */}
-          <div className="mb-2 flex w-full items-end justify-between gap-2">
-            <button
-              type="button"
-              aria-label="Buka papan angka"
-              onClick={() => setNumpadOpen((o) => !o)}
-              className="flex min-w-0 flex-1 items-end gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
-            >
-              <div className="min-w-0">
-                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Total
-                </p>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span
-                    className="rounded-lg bg-secondary/60 px-2 py-0.5 text-xs font-semibold tabular-nums"
-                    data-testid="trx-currency-label"
-                    title={`Mata uang utama: ${currency?.ISO ?? 'IDR'}`}
-                  >
-                    {currency?.SYMBOL ?? 'Rp'}
+      {/* Unified Input Drawer (Single Sheet for Numpad, Kategori & Aset) */}
+      <Overlay
+        open={activeSheet !== null}
+        onClose={() => setActiveSheet(null)}
+        align="bottom"
+        testId="trx-unified-drawer"
+        label="Input transaksi"
+      >
+        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border border-b-0 border-border/80 bg-card pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-lg md:rounded-2xl md:border md:pb-0">
+          {activeSheet === 'numpad' && (
+            <div data-testid="trx-numpad-drawer" className="flex flex-col animate-in fade-in duration-150">
+              <div className="flex items-center justify-between border-b px-4 py-2.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Total
                   </span>
-                  <p
-                    className="min-w-0 truncate text-xl leading-none font-bold tabular-nums sm:text-2xl md:text-3xl"
-                    data-testid="trx-amount-display"
-                  >
-                    {(negative && Number(raw) > 0 ? '-' : '') + formatTypingAmount(raw, currency)}
-                  </p>
+                  <span className="text-base font-bold text-foreground">
+                    {raw
+                      ? (negative && Number(raw) > 0 ? `-${currencySymbol} ` : `${currencySymbol} `) +
+                        formatTypingAmount(raw, currency)
+                      : `${currencySymbol} 0`}
+                  </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveSheet(null)}
+                  aria-label="Tutup"
+                  className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X className="size-4" />
+                </button>
               </div>
-            </button>
-
-            {type === 'transfer' && (
-              <Button
-                type="button"
-                variant={fee > 0 ? 'secondary' : 'outline'}
-                size="sm"
-                data-testid="trx-quick-fee-btn"
-                onClick={() => setFeeSheetOpen(true)}
-                className="h-8 gap-1.5 text-xs font-medium shrink-0"
-              >
-                <Coins className="size-3.5 text-muted-foreground" />
-                <span>{fee > 0 ? `Biaya: ${formatCurrency(fee, currency)}` : '+ Biaya'}</span>
-              </Button>
-            )}
-          </div>
-
-          {numpadOpen && (
-            <Numpad
-              decimals={decimals}
-              showBackspace={false}
-              onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
-              showMinus={type !== 'transfer'}
-              negative={negative}
-              onMinus={() => setNegative((n) => !n)}
-              showDone={true}
-              onDone={() => {
-                setNumpadOpen(false)
-                if (!isEdit && !categoryUid && type !== 'transfer') {
-                  setTimeout(() => setCategoryPickerOpen(true), 150)
-                } else if (!isEdit && type === 'transfer' && !assetUid) {
-                  setTimeout(() => setAssetPicker('from'), 150)
-                } else if (!note) {
-                  setTimeout(() => noteInputRef.current?.focus(), 150)
-                }
-              }}
-            />
+              <div className="p-3">
+                <Numpad
+                  decimals={decimals}
+                  showBackspace={false}
+                  onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
+                  showMinus={type !== 'transfer'}
+                  negative={negative}
+                  onMinus={() => setNegative((n) => !n)}
+                  showDone={true}
+                  onDone={handleNumpadDone}
+                />
+              </div>
+            </div>
           )}
 
-          <div className="mt-2.5 flex gap-2">
-            {!isEdit && (
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 flex-1 text-xs sm:text-sm font-semibold"
-                data-testid="trx-save-next"
-                onClick={() => save(true)}
-              >
-                {t.common.continue}
-              </Button>
-            )}
-            <Button
-              type="button"
-              className="h-10 flex-1 text-xs sm:text-sm font-semibold"
-              data-testid="trx-save"
-              onClick={() => save(false)}
-            >
-              {t.common.save}
-            </Button>
-          </div>
-        </div>
-      </div>
+          {activeSheet === 'category' && (
+            <div className="flex flex-col min-h-0 flex-1 animate-in fade-in duration-150">
+              <CategoryPickerView
+                type={type === 'income' ? 'income' : 'expense'}
+                selectedUid={categoryUid}
+                onSelect={handleCategorySelect}
+                onClose={() => setActiveSheet(null)}
+              />
+            </div>
+          )}
 
-      <CategoryPicker
-        open={categoryPickerOpen}
-        type={type === 'income' ? 'income' : 'expense'}
-        selectedUid={categoryUid}
-        onSelect={(category: Category, parent: Category | null) => {
-          setCategoryUid(category.uid)
-          setCategoryLabel(parent ? `${parent.NAME} › ${category.NAME}` : category.NAME)
-          setCategoryPickerOpen(false)
-          if (!isEdit && !assetUid) {
-            setTimeout(() => setAssetPicker('from'), 150)
-          } else if (!note) {
-            setTimeout(() => noteInputRef.current?.focus(), 150)
-          }
-        }}
-        onClose={() => setCategoryPickerOpen(false)}
-      />
+          {(activeSheet === 'asset_from' || activeSheet === 'asset_to') && (
+            <div className="flex flex-col min-h-0 flex-1 animate-in fade-in duration-150">
+              <PickerView
+                title={
+                  activeSheet === 'asset_to'
+                    ? 'Uang masuk'
+                    : type === 'transfer'
+                    ? 'Uang keluar'
+                    : 'Aset'
+                }
+                items={assetItems}
+                selected={activeSheet === 'asset_to' ? toAssetUid : assetUid}
+                onSelect={handleAssetSelect}
+                onClose={() => setActiveSheet(null)}
+                emptyLabel="Belum ada aset. Tambahkan dari tab Aset."
+                testId="asset-picker"
+              />
+            </div>
+          )}
+        </div>
+      </Overlay>
 
       <TransactionTagPicker
         open={tagPickerOpen}
@@ -1115,31 +1346,6 @@ export function TransactionForm({
           }
         }}
         onClose={() => setTagPickerOpen(false)}
-      />
-
-      <PickerSheet
-        open={assetPicker !== null}
-        title={assetPicker === 'to' ? 'Uang masuk' : assetPicker === 'from' && type === 'transfer' ? 'Uang keluar' : 'Aset'}
-        items={assetItems}
-        selected={assetPicker === 'to' ? toAssetUid : assetUid}
-        onSelect={(value) => {
-          if (assetPicker === 'to') {
-            setToAssetUid(value)
-            setAssetPicker(null)
-            if (!note) setTimeout(() => noteInputRef.current?.focus(), 150)
-          } else {
-            setAssetUid(value)
-            setAssetPicker(null)
-            if (!isEdit && type === 'transfer' && !toAssetUid) {
-              setTimeout(() => setAssetPicker('to'), 150)
-            } else if (!note) {
-              setTimeout(() => noteInputRef.current?.focus(), 150)
-            }
-          }
-        }}
-        onClose={() => setAssetPicker(null)}
-        emptyLabel="Belum ada aset. Tambahkan dari tab Aset."
-        testId="asset-picker"
       />
 
       <RecurringSheet

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Filter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Overlay } from '@/components/ui/overlay'
 import { DatePickerSheet } from '@/components/ui/date-picker-sheet'
@@ -10,6 +10,7 @@ import { PickerSheet } from '@/components/ui/picker-sheet'
 import { MonthNavigator } from '@/components/month-navigator'
 import { CategoryBarChart, StatistikLineChart } from '@/components/statistik-chart'
 import { StatistikDetail } from '@/components/statistik-detail'
+import { StatistikCategoryFilterSheet } from '@/components/statistik-category-filter-sheet'
 import { BookmarkScreen } from '@/components/bookmark-screen'
 import { TransactionForm, type TransactionDraft } from '@/components/transaction-form'
 import { TransactionsEmpty, type Lookups } from '@/components/transaction-list'
@@ -65,6 +66,8 @@ export function StatistikScreen() {
   const [modeOpen, setModeOpen] = useState(false)
   const [periodOpen, setPeriodOpen] = useState(false)
   const [periodField, setPeriodField] = useState<'from' | 'to' | null>(null)
+  const [categoryFilterOpen, setCategoryFilterOpen] = useState(false)
+  const [selectedCategoryUids, setSelectedCategoryUids] = useState<string[] | null>(null)
   const [detailUid, setDetailUid] = useState<string | null>(null)
 
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
@@ -154,22 +157,53 @@ export function StatistikScreen() {
     [all, range.from, range.to],
   )
 
-  const totals = useMemo(() => summarize(rangeRows), [rangeRows])
+  // Seluruh kategori pengeluaran/pendapatan yang ada di periode ini (sebelum disaring pilihan user)
+  const availableCategoryStats = useMemo(
+    () => categoryBreakdown(rangeRows, type, categoryMap),
+    [rangeRows, type, categoryMap],
+  )
+
+  // Menyaring transaksi berdasarkan kategori yang dipilih user
+  const activeRangeRows = useMemo(() => {
+    if (!selectedCategoryUids) return rangeRows
+    const allowed = new Set(selectedCategoryUids)
+    return rangeRows.filter((tx) => {
+      if (matchesStatsType(tx.DO_TYPE, type)) {
+        const uid = reportingCategoryUid(tx, categoryMap)
+        return allowed.has(uid)
+      }
+      return true
+    })
+  }, [rangeRows, selectedCategoryUids, type, categoryMap])
+
+  const activeAllRows = useMemo(() => {
+    if (!selectedCategoryUids) return all
+    const allowed = new Set(selectedCategoryUids)
+    return all.filter((tx) => {
+      if (matchesStatsType(tx.DO_TYPE, type)) {
+        const uid = reportingCategoryUid(tx, categoryMap)
+        return allowed.has(uid)
+      }
+      return true
+    })
+  }, [all, selectedCategoryUids, type, categoryMap])
+
+  const totals = useMemo(() => summarize(activeRangeRows), [activeRangeRows])
   const currentTotal = type === 'income' ? totals.income : totals.expense
 
   const averages = useMemo(
-    () => calculateAverages(currentTotal, rangeRows, type, state, today),
-    [currentTotal, rangeRows, type, state, today],
+    () => calculateAverages(currentTotal, activeRangeRows, type, state, today),
+    [currentTotal, activeRangeRows, type, state, today],
   )
 
   const lineChartPoints = useMemo(
-    () => getLineChartPoints(state.mode === 'yearly' ? all : rangeRows, type, state),
-    [all, rangeRows, type, state],
+    () => getLineChartPoints(state.mode === 'yearly' ? activeAllRows : activeRangeRows, type, state),
+    [activeAllRows, activeRangeRows, type, state],
   )
 
   const stats = useMemo(
-    () => categoryBreakdown(rangeRows, type, categoryMap),
-    [rangeRows, type, categoryMap],
+    () => categoryBreakdown(activeRangeRows, type, categoryMap),
+    [activeRangeRows, type, categoryMap],
   )
   const selected = useMemo(
     () => stats.find((stat) => stat.uid === detailUid) ?? null,
@@ -334,17 +368,35 @@ export function StatistikScreen() {
             </button>
           )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="stats-mode-button"
-            aria-haspopup="dialog"
-            onClick={() => setModeOpen(true)}
-            className="shrink-0 gap-1 text-xs font-semibold md:text-sm"
-          >
-            {t.stats.modes[state.mode]}
-            <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground" />
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant={selectedCategoryUids ? 'secondary' : 'ghost'}
+              size="sm"
+              data-testid="stats-category-filter-button"
+              aria-label="Filter kategori"
+              onClick={() => setCategoryFilterOpen(true)}
+              className={cn(
+                'shrink-0 gap-1.5 px-2 text-xs font-semibold sm:px-2.5 md:text-sm',
+                selectedCategoryUids &&
+                  'border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20',
+              )}
+            >
+              <Filter className="size-3.5" />
+              <span>{selectedCategoryUids ? `${selectedCategoryUids.length}` : 'Filter'}</span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="stats-mode-button"
+              aria-haspopup="dialog"
+              onClick={() => setModeOpen(true)}
+              className="shrink-0 gap-1 text-xs font-semibold md:text-sm"
+            >
+              {t.stats.modes[state.mode]}
+              <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground" />
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -368,7 +420,10 @@ export function StatistikScreen() {
                 role="tab"
                 aria-selected={active}
                 data-testid={`stats-type-${id}`}
-                onClick={() => setType(id)}
+                onClick={() => {
+                  setType(id)
+                  setSelectedCategoryUids(null)
+                }}
                 className={cn(
                   'flex flex-col items-start gap-0.5 rounded-xl px-3 py-2 text-left transition-colors duration-200',
                   active
@@ -389,6 +444,25 @@ export function StatistikScreen() {
             )
           })}
         </div>
+
+        {selectedCategoryUids && (
+          <div
+            data-testid="stats-filter-active-chip"
+            className="flex items-center justify-between rounded-xl border bg-secondary/80 px-3 py-1.5 text-xs"
+          >
+            <span className="text-muted-foreground">
+              Menampilkan <b className="text-foreground">{selectedCategoryUids.length}</b> dari {availableCategoryStats.length} kategori
+            </span>
+            <button
+              type="button"
+              data-testid="stats-filter-reset-button"
+              onClick={() => setSelectedCategoryUids(null)}
+              className="font-semibold text-primary hover:underline focus-visible:outline-none"
+            >
+              Reset
+            </button>
+          </div>
+        )}
 
         {/* 1. Metrik Rata-rata Harian & Rata-rata Asli */}
         <div
@@ -566,6 +640,18 @@ export function StatistikScreen() {
           )
         }
         onClose={() => setPeriodField(null)}
+      />
+
+      <StatistikCategoryFilterSheet
+        open={categoryFilterOpen}
+        onClose={() => setCategoryFilterOpen(false)}
+        categories={availableCategoryStats}
+        selectedUids={selectedCategoryUids}
+        onApply={(uids) => {
+          setSelectedCategoryUids(uids)
+          setCategoryFilterOpen(false)
+        }}
+        currency={currency}
       />
 
       <StatistikDetail

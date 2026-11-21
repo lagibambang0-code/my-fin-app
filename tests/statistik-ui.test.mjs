@@ -468,8 +468,8 @@ async function main() {
         'Transport ratio should be 25%',
       )
       assert(
-        await hasText(page, `[data-testid="stats-bar-${DEFAULT_EXPENSE_UID}"]`, '🍜 Food'),
-        'bar chart label missing',
+        await hasText(page, `[data-testid="stats-row-${DEFAULT_EXPENSE_UID}"]`, '🍜 Food'),
+        'category row label missing',
       )
       assert((await amountOf(page, '[data-testid="stats-total-expense"]')) === 10000, 'expense total')
       assert((await amountOf(page, '[data-testid="stats-total-income"]')) === 100000, 'income total')

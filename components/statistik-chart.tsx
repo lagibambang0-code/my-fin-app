@@ -8,7 +8,6 @@ import { formatCurrency } from '@/lib/format'
 import type { Currency } from '@/lib/db'
 import {
   formatCompactAmount,
-  formatPercent,
   type CategoryStat,
   type LineChartPoint,
   type TrendPoint,
@@ -104,32 +103,6 @@ export function CategoryBarChart({
               {stats.length} Kategori
             </span>
           </div>
-        </div>
-
-        {/* Legenda Kategori */}
-        <div className="mt-4 flex flex-col gap-2 pt-3 border-t">
-          {stats.map((stat) => (
-            <div
-              key={stat.uid}
-              data-testid={`stats-bar-${stat.uid}`}
-              className="flex items-center justify-between gap-2 text-xs"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span
-                  className="size-3 shrink-0 rounded-full"
-                  style={{ background: stat.color }}
-                  aria-hidden="true"
-                />
-                <span className="truncate font-medium">{stat.name}</span>
-              </div>
-              <span
-                data-testid={`stats-bar-percent-${stat.uid}`}
-                className="shrink-0 tabular-nums font-semibold text-muted-foreground"
-              >
-                {formatPercent(stat.percent, 1)}
-              </span>
-            </div>
-          ))}
         </div>
       </div>
     </section>

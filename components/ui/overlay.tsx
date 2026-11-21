@@ -110,6 +110,15 @@ export function FullScreenSheet({
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
+  useEffect(() => {
+    if (!open) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [open])
+
   if (!open) return null
 
   if (variant === 'drawer') {

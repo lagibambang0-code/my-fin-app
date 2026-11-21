@@ -50,11 +50,11 @@ export function NumpadBackspace({
       aria-label="Hapus satu digit"
       onClick={onKey}
       className={cn(
-        'flex h-10 w-full items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-12',
+        'flex h-12 sm:h-13 md:h-14 w-full items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         className,
       )}
     >
-      <Delete aria-hidden="true" className="size-5" />
+      <Delete aria-hidden="true" className="size-5 sm:size-6" />
     </button>
   )
 }
@@ -116,7 +116,7 @@ export function Numpad({
         disabled={disabled}
         onClick={() => onKey(key)}
         className={cn(
-          'flex h-10 items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-sm sm:text-base font-semibold tabular-nums transition-colors duration-150 md:h-12',
+          'flex h-12 sm:h-13 md:h-14 items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-base sm:text-lg md:text-xl font-bold tabular-nums transition-colors duration-150',
           'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-accent',
           disabled && 'pointer-events-none opacity-40',
         )}
@@ -127,67 +127,65 @@ export function Numpad({
   }
 
   if (fourCol) {
-    // Split the 12 digit keys into 4 rows of 3, then append a 4th-column
-    // button per row: ⌫ / − / Selesai / (empty).
-    const rows = [
-      { digits: ['1', '2', '3'] as const },
-      { digits: ['4', '5', '6'] as const },
-      { digits: ['7', '8', '9'] as const },
-      { digits: ['00', '0', '.'] as const },
-    ]
-
-    const col4: ReactNode[] = [
-      // Row 1 col 4: backspace always shown in 4-col layout
-      <NumpadBackspace
-        key="back"
-        onKey={() => onKey('back')}
-        testId={`${testIdPrefix}back`}
-      />,
-      // Row 2 col 4: minus or empty placeholder
-      showMinus ? (
-        <button
-          key="minus"
-          type="button"
-          data-testid={`${testIdPrefix}minus`}
-          aria-label="Minus"
-          aria-pressed={negative}
-          onClick={onMinus}
-          className={cn(
-            'flex h-10 items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-lg font-semibold transition-colors duration-150 md:h-12',
-            'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-accent',
-            negative && 'bg-primary/15 text-primary',
-          )}
-        >
-          −
-        </button>
-      ) : (
-        <span key="minus-empty" aria-hidden="true" />
-      ),
-      // Row 3 col 4: Selesai or empty placeholder
-      showDone ? (
-        <button
-          key="done"
-          type="button"
-          data-testid={`${testIdPrefix}done`}
-          aria-label="Selesai"
-          onClick={onDone}
-          className={cn(
-            'flex h-10 items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-xs font-bold text-primary transition-colors duration-150 md:h-12',
-            'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-accent',
-          )}
-        >
-          Selesai
-        </button>
-      ) : (
-        <span key="done-empty" aria-hidden="true" />
-      ),
-      // Row 4 col 4: intentionally empty
-      <span key="empty4" aria-hidden="true" />,
-    ]
-
+    // 4-column layout with 4 rows:
+    // Row 1: 1, 2, 3, ⌫
+    // Row 2: 4, 5, 6, −
+    // Row 3: 7, 8, 9, Selesai (row-span-2)
+    // Row 4: 00, 0, . (column 4 is occupied by Selesai spanning down)
     return (
       <div className={cn('grid grid-cols-4 gap-1.5 md:gap-2', className)}>
-        {rows.flatMap((row, i) => [...row.digits.map(digitBtn), col4[i]])}
+        {/* Row 1 */}
+        {(['1', '2', '3'] as const).map(digitBtn)}
+        <NumpadBackspace
+          key="back"
+          onKey={() => onKey('back')}
+          testId={`${testIdPrefix}back`}
+        />
+
+        {/* Row 2 */}
+        {(['4', '5', '6'] as const).map(digitBtn)}
+        {showMinus ? (
+          <button
+            key="minus"
+            type="button"
+            data-testid={`${testIdPrefix}minus`}
+            aria-label="Minus"
+            aria-pressed={negative}
+            onClick={onMinus}
+            className={cn(
+              'flex h-12 sm:h-13 md:h-14 items-center justify-center rounded-xl border border-transparent bg-secondary/60 text-xl sm:text-2xl font-bold transition-colors duration-150',
+              'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-accent',
+              negative && 'bg-primary/15 text-primary',
+            )}
+          >
+            −
+          </button>
+        ) : (
+          <span key="minus-empty" aria-hidden="true" />
+        )}
+
+        {/* Row 3 */}
+        {(['7', '8', '9'] as const).map(digitBtn)}
+        {showDone ? (
+          <button
+            key="done"
+            type="button"
+            data-testid={`${testIdPrefix}done`}
+            aria-label="Selesai"
+            onClick={onDone}
+            className={cn(
+              'row-span-2 flex h-full min-h-[6.5rem] items-center justify-center rounded-xl border border-transparent bg-primary text-primary-foreground text-sm sm:text-base font-bold shadow-sm transition-all duration-150',
+              'hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95',
+            )}
+          >
+            Selesai
+          </button>
+        ) : (
+          <span key="done-empty" aria-hidden="true" className="row-span-2" />
+        )}
+
+        {/* Row 4 */}
+        {(['00', '0', '.'] as const).map(digitBtn)}
       </div>
     )
   }
