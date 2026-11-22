@@ -231,6 +231,7 @@ export const TRANSLATIONS = {
         settings: 'Settings',
         tags: 'Tags',
         photos: 'Photos',
+        investments: 'Investments',
       },
     },
     asset: {
@@ -640,6 +641,7 @@ export const TRANSLATIONS = {
         settings: 'Pengaturan',
         tags: 'Tag',
         photos: 'Foto',
+        investments: 'Investasi',
       },
     },
     asset: {

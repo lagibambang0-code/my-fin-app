@@ -24,6 +24,8 @@ export type PickerViewProps = {
   emptyLabel?: string
   testId?: string
   showHeader?: boolean
+  layout?: 'list' | 'grid'
+  columns?: 2 | 3 | 4
 }
 
 type PickerSheetProps = PickerViewProps & {
@@ -43,6 +45,8 @@ export function PickerView({
   emptyLabel = 'Tidak ada data',
   testId = 'picker-sheet',
   showHeader = true,
+  layout = 'list',
+  columns = 3,
 }: PickerViewProps) {
   const [query, setQuery] = useState('')
 
@@ -116,45 +120,95 @@ export function PickerView({
                   {letter}
                 </p>
               )}
-              <ul>
-                {options.map((item) => {
-                  const isSelected = selected === item.value
-                  return (
-                    <li key={item.value}>
+              {layout === 'grid' ? (
+                <div
+                  className={cn(
+                    'grid gap-2',
+                    columns === 2 && 'grid-cols-2',
+                    columns === 3 && 'grid-cols-3',
+                    columns === 4 && 'grid-cols-4',
+                  )}
+                >
+                  {options.map((item) => {
+                    const isSelected = selected === item.value
+                    return (
                       <button
+                        key={item.value}
                         type="button"
                         data-testid={`picker-option-${item.value}`}
                         aria-pressed={isSelected}
                         onClick={() => onSelect(item.value)}
                         className={cn(
-                          'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
+                          'relative flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center transition-colors',
                           'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          isSelected && 'bg-accent text-accent-foreground',
+                          isSelected
+                            ? 'border-primary bg-primary/10 text-primary font-semibold shadow-xs'
+                            : 'border-border bg-card text-foreground',
                         )}
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">
-                            {item.label}
+                        <span className="w-full truncate text-xs sm:text-sm font-medium">
+                          {item.label}
+                        </span>
+                        {item.trailing && (
+                          <span
+                            className={cn(
+                              'w-full truncate text-[10px] sm:text-xs tabular-nums',
+                              isSelected ? 'text-primary/85 font-medium' : 'text-muted-foreground',
+                            )}
+                          >
+                            {item.trailing}
                           </span>
-                          {item.sublabel && (
-                            <span className="block truncate text-xs text-muted-foreground">
-                              {item.sublabel}
-                            </span>
-                          )}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          {item.trailing && (
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {item.trailing}
-                            </span>
-                          )}
-                          {isSelected && <Check className="size-4 text-primary" />}
-                        </span>
+                        )}
+                        {isSelected && (
+                          <span className="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                            <Check className="size-2.5" />
+                          </span>
+                        )}
                       </button>
-                    </li>
-                  )
-                })}
-              </ul>
+                    )
+                  })}
+                </div>
+              ) : (
+                <ul>
+                  {options.map((item) => {
+                    const isSelected = selected === item.value
+                    return (
+                      <li key={item.value}>
+                        <button
+                          type="button"
+                          data-testid={`picker-option-${item.value}`}
+                          aria-pressed={isSelected}
+                          onClick={() => onSelect(item.value)}
+                          className={cn(
+                            'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
+                            'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            isSelected && 'bg-accent text-accent-foreground',
+                          )}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">
+                              {item.label}
+                            </span>
+                            {item.sublabel && (
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {item.sublabel}
+                              </span>
+                            )}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            {item.trailing && (
+                              <span className="text-xs text-muted-foreground tabular-nums">
+                                {item.trailing}
+                              </span>
+                            )}
+                            {isSelected && <Check className="size-4 text-primary" />}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
             </div>
           ))
         )}

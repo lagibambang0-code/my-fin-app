@@ -1563,6 +1563,26 @@ export async function getVisibleAssets(): Promise<Asset[]> {
   return list.filter((a) => a.IS_SHOW === 1)
 }
 
+/**
+ * Returns non-deleted assets ordered exactly as displayed on the Asset tab:
+ * Grouped by active asset groups (sorted by group.ORDERSEQ),
+ * then within each group sorted by asset.ORDERSEQ.
+ */
+export async function getAssetsInTabOrder(includeHidden = false): Promise<Asset[]> {
+  const [groups, assets] = await Promise.all([
+    getAssetGroups(),
+    includeHidden ? getAllAssets() : getVisibleAssets(),
+  ])
+  const groupOrder = new Map(groups.map((g, idx) => [g.uid, idx]))
+
+  return [...assets].sort((a, b) => {
+    const gA = groupOrder.get(a.groupUid) ?? 9999
+    const gB = groupOrder.get(b.groupUid) ?? 9999
+    if (gA !== gB) return gA - gB
+    return a.ORDERSEQ - b.ORDERSEQ
+  })
+}
+
 export async function getDeletedAssets(): Promise<Asset[]> {
   const list = await db.assets.where('IS_DEL').equals(1).toArray()
   return byOrderSeq(list)
@@ -2114,6 +2134,8 @@ export async function resetAllData(
       db.assets,
       db.currencies,
       db.settings,
+      db.investments,
+      db.investmentRecords,
     ],
     async () => {
       await db.transactions.clear()
@@ -2129,6 +2151,8 @@ export async function resetAllData(
       await db.assets.clear()
       await db.currencies.clear()
       await db.settings.clear()
+      await db.investments.clear()
+      await db.investmentRecords.clear()
 
       await db.currencies.bulkAdd(SEED_CURRENCIES)
       await db.settings.bulkAdd(SEED_SETTINGS)

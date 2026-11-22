@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   AlignLeft,
   ArrowUpDown,
@@ -31,7 +31,6 @@ import {
 import { FullScreenSheet, Overlay } from '@/components/ui/overlay'
 import { DatePickerSheet } from '@/components/ui/date-picker-sheet'
 import { TimePickerSheet } from '@/components/ui/time-picker-sheet'
-import { AmountSheet } from '@/components/ui/amount-sheet'
 import { PickerView, type PickerItem } from '@/components/ui/picker-sheet'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { CategoryPickerView } from '@/components/transaction-category-picker'
@@ -51,7 +50,7 @@ import {
   createTransaction,
   db,
   genUid,
-  getAllAssets,
+  getAssetsInTabOrder,
   getAssetBalances,
   getMainCategoriesByType,
   getMainCurrency,
@@ -69,6 +68,7 @@ import {
   formatShortDate,
   formatTypingAmount,
   fromIso,
+  parseAmount,
   todayIso,
   WEEKDAYS_SHORT,
 } from '@/lib/format'
@@ -118,7 +118,7 @@ const EMPTY_RECUR: RecurringValue = {
   installmentMonths: null,
 }
 
-type ActiveDrawer = 'numpad' | 'category' | 'asset_from' | 'asset_to' | null
+type ActiveDrawer = 'numpad' | 'fee' | 'category' | 'asset_from' | 'asset_to' | null
 
 /** Tappable picker row shared by the Kategori / Aset / Berulang fields. */
 function FieldRow({
@@ -198,7 +198,8 @@ export function TransactionForm({
   const [negative, setNegative] = useState(false)
   const [activeSheet, setActiveSheet] = useState<ActiveDrawer>(null)
   const [fee, setFee] = useState(0)
-  const [feeSheetOpen, setFeeSheetOpen] = useState(false)
+  const [feeRaw, setFeeRaw] = useState('')
+  const [showFee, setShowFee] = useState(false)
   const [categoryUid, setCategoryUid] = useState<string | null>(null)
   const [categoryLabel, setCategoryLabel] = useState<string | null>(null)
   const [assetUid, setAssetUid] = useState<string | null>(null)
@@ -230,8 +231,74 @@ export function TransactionForm({
   const fileRef = useRef<HTMLInputElement>(null)
   const noteInputRef = useRef<HTMLInputElement>(null)
   const formScrollRef = useRef<HTMLDivElement>(null)
+  const actionButtonsRef = useRef<HTMLDivElement>(null)
   // Stable uid per form session so photos can attach before the first save.
   const uidRef = useRef(transaction?.uid ?? genUid('trx'))
+
+  const [keyboardInset, setKeyboardInset] = useState(0)
+
+  const scrollToButtons = useCallback(() => {
+    setTimeout(() => {
+      if (actionButtonsRef.current) {
+        actionButtonsRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'end',
+        })
+      } else if (formScrollRef.current) {
+        formScrollRef.current.scrollTo({
+          top: formScrollRef.current.scrollHeight,
+          behavior: 'smooth',
+        })
+      }
+    }, 150)
+  }, [])
+
+  const focusNoteAndScrollDown = useCallback(() => {
+    setTimeout(() => {
+      noteInputRef.current?.focus()
+      scrollToButtons()
+    }, 150)
+  }, [scrollToButtons])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return
+
+    const handleViewportChange = () => {
+      const vv = window.visualViewport
+      if (!vv) return
+      const diff = Math.round(window.innerHeight - vv.height)
+      const inset = diff > 120 ? diff : 0
+      setKeyboardInset(inset)
+
+      const activeEl = document.activeElement
+      if (
+        activeEl &&
+        (activeEl.id === 'trx-note-input' || activeEl.id === 'trx-description-input')
+      ) {
+        scrollToButtons()
+      }
+    }
+
+    const vv = window.visualViewport
+    vv.addEventListener('resize', handleViewportChange)
+    vv.addEventListener('scroll', handleViewportChange)
+    return () => {
+      vv.removeEventListener('resize', handleViewportChange)
+      vv.removeEventListener('scroll', handleViewportChange)
+    }
+  }, [scrollToButtons])
+
+  useEffect(() => {
+    if (keyboardInset > 0) {
+      const activeEl = document.activeElement
+      if (
+        activeEl &&
+        (activeEl.id === 'trx-note-input' || activeEl.id === 'trx-description-input')
+      ) {
+        scrollToButtons()
+      }
+    }
+  }, [keyboardInset, scrollToButtons])
 
   const handleSwapAssets = () => {
     const prevFrom = assetUid
@@ -271,7 +338,8 @@ export function TransactionForm({
     setActiveSheet(isNew && !isEdit ? 'numpad' : null)
     const initFee = Number(source?.FEE || initial?.fee || 0) || 0
     setFee(initFee)
-    setFeeSheetOpen(false)
+    setFeeRaw(initFee > 0 ? String(initFee) : '')
+    setShowFee(initFee > 0)
     setCategoryUid(source?.ctgUid ?? initial?.categoryUid ?? null)
     setCategoryLabel(source?.CATEGORY_NAME ?? initial?.categoryName ?? null)
     setAssetUid(source?.assetUid ?? initial?.assetUid ?? null)
@@ -290,7 +358,7 @@ export function TransactionForm({
 
     ;(async () => {
       const [assetList, balanceMap, main, photoList, tagList, attached] = await Promise.all([
-        getAllAssets(),
+        getAssetsInTabOrder(true),
         getAssetBalances(),
         getMainCurrency(),
         source?.uid ? getPhotosByTransaction(source.uid) : Promise.resolve([] as Photo[]),
@@ -338,12 +406,14 @@ export function TransactionForm({
 
   const assetItems: PickerItem[] = useMemo(
     () =>
-      assets.map((asset) => ({
-        value: asset.uid,
-        label: asset.NIC_NAME,
-        trailing: formatCurrency(balances.get(asset.uid) ?? 0, currency),
-      })),
-    [assets, balances, currency],
+      assets
+        .filter((asset) => asset.IS_SHOW === 1 || asset.uid === assetUid || asset.uid === toAssetUid)
+        .map((asset) => ({
+          value: asset.uid,
+          label: asset.NIC_NAME,
+          trailing: formatCurrency(balances.get(asset.uid) ?? 0, currency),
+        })),
+    [assets, assetUid, toAssetUid, balances, currency],
   )
 
   const recurLabel = useMemo(() => {
@@ -414,15 +484,6 @@ export function TransactionForm({
     recur,
   ])
 
-  const focusNoteAndScrollDown = () => {
-    setTimeout(() => {
-      noteInputRef.current?.focus()
-      formScrollRef.current?.scrollTo({
-        top: formScrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
-    }, 150)
-  }
 
   const handleNumpadDone = () => {
     if (!isEdit) {
@@ -436,10 +497,34 @@ export function TransactionForm({
           if (!note) focusNoteAndScrollDown()
         }
       } else {
-        if (!assetUid) {
+        if (showFee && fee === 0 && !feeRaw) {
+          setActiveSheet('fee')
+        } else if (!assetUid) {
           setActiveSheet('asset_from')
         } else if (!toAssetUid) {
           setActiveSheet('asset_to')
+        } else {
+          setActiveSheet(null)
+          if (!note) focusNoteAndScrollDown()
+        }
+      }
+    } else {
+      setActiveSheet(null)
+    }
+  }
+
+  const handleFeeDone = () => {
+    const parsed = Number.isNaN(parseAmount(feeRaw)) ? 0 : parseAmount(feeRaw)
+    setFee(parsed)
+    if (!isEdit) {
+      if (!assetUid) {
+        setActiveSheet('asset_from')
+      } else if (!toAssetUid) {
+        setActiveSheet('asset_to')
+      } else {
+        const hasAmount = raw !== '' && Number(raw) > 0
+        if (!hasAmount) {
+          setActiveSheet('numpad')
         } else {
           setActiveSheet(null)
           if (!note) focusNoteAndScrollDown()
@@ -477,6 +562,8 @@ export function TransactionForm({
           setActiveSheet('asset_from')
         } else if (!hasAmount) {
           setActiveSheet('numpad')
+        } else if (showFee && fee === 0 && !feeRaw) {
+          setActiveSheet('fee')
         } else {
           setActiveSheet(null)
           if (!note) focusNoteAndScrollDown()
@@ -493,6 +580,8 @@ export function TransactionForm({
             setActiveSheet('asset_to')
           } else if (!hasAmount) {
             setActiveSheet('numpad')
+          } else if (showFee && fee === 0 && !feeRaw) {
+            setActiveSheet('fee')
           } else {
             setActiveSheet(null)
             if (!note) focusNoteAndScrollDown()
@@ -744,7 +833,8 @@ export function TransactionForm({
       setNegative(false)
       setActiveSheet('numpad')
       setFee(0)
-      setFeeSheetOpen(false)
+      setFeeRaw('')
+      setShowFee(false)
       setCategoryUid(null)
       setCategoryLabel(null)
       setNote('')
@@ -820,7 +910,13 @@ export function TransactionForm({
         </Button>
       </header>
 
-      <div ref={formScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+      <div
+        ref={formScrollRef}
+        style={{
+          paddingBottom: keyboardInset > 0 ? `${keyboardInset + 16}px` : undefined,
+        }}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain transition-[padding] duration-200"
+      >
         <div className="mx-auto w-full max-w-lg space-y-3 px-3.5 py-3">
           <div
             role="tablist"
@@ -913,23 +1009,6 @@ export function TransactionForm({
             onClose={() => setTimePickerOpen(false)}
           />
 
-          <AmountSheet
-            open={feeSheetOpen}
-            title="Biaya transfer"
-            initialRaw={fee > 0 ? String(fee) : ''}
-            currency={currency}
-            onDone={(value) => {
-              setFee(value)
-              setFeeSheetOpen(false)
-            }}
-            onClose={() => setFeeSheetOpen(false)}
-            testId="trx-fee-sheet"
-            valueTestId="trx-fee-sheet-value"
-            doneTestId="trx-fee-sheet-done"
-            padTestIdPrefix="fee-numpad-"
-            hint="Biaya admin yang ikut mengurangi aset sumber."
-          />
-
           {/* Nominal + pembayaran */}
           {showsCategory ? (
             <div className="overflow-hidden rounded-2xl border bg-card">
@@ -981,32 +1060,54 @@ export function TransactionForm({
                 divided={false}
                 onAction={() => setActiveSheet(activeSheet === 'numpad' ? null : 'numpad')}
                 rightAction={
-                  fee === 0 ? (
+                  !showFee ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       data-testid="trx-fee-button"
-                      onClick={() => setFeeSheetOpen(true)}
+                      onClick={() => {
+                        setShowFee(true)
+                        setActiveSheet('fee')
+                      }}
                       className="h-7 gap-1 px-2 text-xs font-medium"
                     >
                       <Coins className="size-3 text-muted-foreground" />
                       <span data-testid="trx-quick-fee-btn">+ Biaya</span>
+                      <span data-testid="trx-fee-value" className="sr-only">
+                        {formatCurrency(0, currency)}
+                      </span>
                     </Button>
                   ) : undefined
                 }
               />
 
-              {fee > 0 && (
+              {showFee && (
                 <FieldRow
                   testId="trx-fee-button"
                   valueTestId="trx-fee-value"
                   icon={<Coins aria-hidden="true" className="size-4" />}
                   label={t.transaction.fee}
-                  value={formatCurrency(fee, currency)}
+                  value={fee > 0 || feeRaw ? formatCurrency(fee, currency) : formatCurrency(0, currency)}
                   placeholder={formatCurrency(0, currency)}
                   divided={true}
-                  onAction={() => setFeeSheetOpen(true)}
+                  onAction={() => setActiveSheet(activeSheet === 'fee' ? null : 'fee')}
+                  rightAction={
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setFee(0)
+                        setFeeRaw('')
+                        setShowFee(false)
+                        if (activeSheet === 'fee') setActiveSheet(null)
+                      }}
+                      aria-label="Hapus biaya"
+                      className="flex size-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  }
                 />
               )}
 
@@ -1059,7 +1160,10 @@ export function TransactionForm({
                 data-testid="trx-note-input"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                onFocus={() => setActiveSheet(null)}
+                onFocus={() => {
+                  setActiveSheet(null)
+                  scrollToButtons()
+                }}
                 placeholder={t.transaction.note}
                 className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
@@ -1079,6 +1183,10 @@ export function TransactionForm({
                 data-testid="trx-description-input"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                onFocus={() => {
+                  setActiveSheet(null)
+                  scrollToButtons()
+                }}
                 rows={2}
                 placeholder={t.transaction.description}
                 className="min-w-0 flex-1 resize-none rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1171,79 +1279,81 @@ export function TransactionForm({
           </div>
 
           {/* Tombol aksi form */}
-          {isEdit ? (
-            <div className="space-y-2 pt-1 pb-4">
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11"
-                  data-testid="trx-copy-button"
-                  onClick={() => {
-                    setCopyDate('today')
-                    setCopyOpen(true)
-                  }}
-                >
-                  <Copy className="size-4" />
-                  Salin
-                </Button>
-                <Button
-                  type="button"
-                  variant={mark ? 'secondary' : 'outline'}
-                  className="h-11"
-                  aria-pressed={mark}
-                  data-testid="trx-mark-button"
-                  onClick={() => setMark((value) => !value)}
-                >
-                  <Star className={cn('size-4', mark && 'fill-primary text-primary')} />
-                  Bookmark
-                </Button>
-              </div>
+          <div ref={actionButtonsRef}>
+            {isEdit ? (
+              <div className="space-y-2 pt-1 pb-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11"
+                    data-testid="trx-copy-button"
+                    onClick={() => {
+                      setCopyDate('today')
+                      setCopyOpen(true)
+                    }}
+                  >
+                    <Copy className="size-4" />
+                    Salin
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={mark ? 'secondary' : 'outline'}
+                    className="h-11"
+                    aria-pressed={mark}
+                    data-testid="trx-mark-button"
+                    onClick={() => setMark((value) => !value)}
+                  >
+                    <Star className={cn('size-4', mark && 'fill-primary text-primary')} />
+                    Bookmark
+                  </Button>
+                </div>
 
-              {isDirty ? (
+                {isDirty ? (
+                  <Button
+                    type="button"
+                    className="h-11 w-full font-semibold"
+                    data-testid="trx-save"
+                    onClick={() => save(false)}
+                  >
+                    <Check className="size-4" />
+                    {t.common.save}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="h-11 w-full font-semibold"
+                    data-testid="trx-delete-button"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 className="size-4" />
+                    Hapus
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-2 pt-1 pb-4">
                 <Button
                   type="button"
-                  className="h-11 w-full font-semibold"
+                  className="h-11 flex-[7] font-semibold"
                   data-testid="trx-save"
                   onClick={() => save(false)}
                 >
-                  <Check className="size-4" />
                   {t.common.save}
                 </Button>
-              ) : (
                 <Button
                   type="button"
-                  variant="destructive"
-                  className="h-11 w-full font-semibold"
-                  data-testid="trx-delete-button"
-                  onClick={() => setConfirmDelete(true)}
+                  variant="outline"
+                  className="h-11 flex-[3] font-semibold"
+                  data-testid="trx-save-next"
+                  onClick={() => save(true)}
                 >
-                  <Trash2 className="size-4" />
-                  Hapus
+                  {t.common.continue}
                 </Button>
-              )}
-            </div>
-          ) : (
-            <div className="flex gap-2 pt-1 pb-4">
-              <Button
-                type="button"
-                className="h-11 flex-[7] font-semibold"
-                data-testid="trx-save"
-                onClick={() => save(false)}
-              >
-                {t.common.save}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 flex-[3] font-semibold"
-                data-testid="trx-save-next"
-                onClick={() => save(true)}
-              >
-                {t.common.continue}
-              </Button>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1270,6 +1380,61 @@ export function TransactionForm({
                       : `${currencySymbol} 0`}
                   </span>
                 </div>
+                <div className="flex items-center gap-2">
+                  {type === 'transfer' && !showFee && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid="trx-fee-button"
+                      onClick={() => {
+                        setShowFee(true)
+                        setActiveSheet('fee')
+                      }}
+                      className="h-7 gap-1 px-2 text-xs font-medium"
+                    >
+                      <Coins className="size-3 text-muted-foreground" />
+                      <span data-testid="trx-quick-fee-btn">+ Biaya</span>
+                    </Button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveSheet(null)}
+                    aria-label="Tutup"
+                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-3">
+                <Numpad
+                  decimals={decimals}
+                  showBackspace={false}
+                  onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
+                  showMinus={type !== 'transfer'}
+                  negative={negative}
+                  onMinus={() => setNegative((n) => !n)}
+                  showDone={true}
+                  onDone={handleNumpadDone}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeSheet === 'fee' && (
+            <div data-testid="trx-fee-sheet" className="flex flex-col animate-in fade-in duration-150">
+              <div className="flex items-center justify-between border-b px-4 py-2.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t.transaction.fee || 'Biaya Transfer'}
+                  </span>
+                  <span data-testid="trx-fee-sheet-value" className="text-base font-bold text-foreground">
+                    {feeRaw
+                      ? `${currencySymbol} ${formatTypingAmount(feeRaw, currency)}`
+                      : `${currencySymbol} 0`}
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => setActiveSheet(null)}
@@ -1283,12 +1448,12 @@ export function TransactionForm({
                 <Numpad
                   decimals={decimals}
                   showBackspace={false}
-                  onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
-                  showMinus={type !== 'transfer'}
-                  negative={negative}
-                  onMinus={() => setNegative((n) => !n)}
+                  onKey={(key: NumpadKey) => setFeeRaw((current) => applyNumpadKey(current, key, decimals))}
+                  testIdPrefix="fee-numpad-"
+                  showMinus={false}
                   showDone={true}
-                  onDone={handleNumpadDone}
+                  doneTestId="trx-fee-sheet-done"
+                  onDone={handleFeeDone}
                 />
               </div>
             </div>
@@ -1321,6 +1486,7 @@ export function TransactionForm({
                 onClose={() => setActiveSheet(null)}
                 emptyLabel="Belum ada aset. Tambahkan dari tab Aset."
                 testId="asset-picker"
+                layout="grid"
               />
             </div>
           )}

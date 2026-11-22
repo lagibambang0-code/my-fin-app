@@ -40,6 +40,7 @@ export type BackupData = {
   settings: boolean
   tags: boolean
   photos: boolean
+  investments: boolean
   dateFrom?: string
   dateTo?: string
 }
@@ -51,6 +52,7 @@ const DATA_TYPES: Array<{ key: keyof BackupData; label: string }> = [
   { key: 'settings', label: 'Pengaturan' },
   { key: 'tags', label: 'Tag' },
   { key: 'photos', label: 'Foto' },
+  { key: 'investments', label: 'Investasi' },
 ]
 
 function formatBytes(bytes: number): string {
@@ -81,6 +83,7 @@ export function BackupScreen() {
     settings: true,
     tags: true,
     photos: false,
+    investments: true,
   })
   const [backupJson, setBackupJson] = useState<string | null>(null)
   const [lastBackupInfo, setLastBackupInfo] = useState<{ timestamp: string; size: number } | null>(null)
@@ -177,6 +180,19 @@ export function BackupScreen() {
       }
 
       const metaGeneral = ['isSynced', 'syncTime', 'syncVersion']
+
+      if (backupData.investments) {
+        const investments = await db.investments.toArray()
+        let investmentRecords = await db.investmentRecords.toArray()
+        if (backupData.dateFrom || backupData.dateTo) {
+          const from = backupData.dateFrom ?? '0000-00-00'
+          const to = backupData.dateTo ?? '9999-12-31'
+          investmentRecords = investmentRecords.filter((r) => r.date >= from && r.date <= to)
+        }
+        backup.investments = stripMeta(investments, metaGeneral)
+        backup.investmentRecords = stripMeta(investmentRecords, metaGeneral)
+      }
+
       const repeats = await db.repeats.toArray()
       backup.repeats = stripMeta(repeats, metaGeneral)
 
@@ -251,6 +267,21 @@ export function BackupScreen() {
       if (backupData.settings && data.settings) await bulkAdd(db.settings, data.settings, 'isDel')
       if (backupData.tags && data.tags) await bulkAdd(db.tags, data.tags, 'isDel')
       if (backupData.photos && data.photos) await bulkAddCIsDel(db.photos, data.photos)
+      if (backupData.investments && data.investments) {
+        await db.investments.clear()
+        await db.investmentRecords.clear()
+        await bulkAdd(db.investments, data.investments, 'isDel')
+        if (data.investmentRecords?.length) {
+          await db.investmentRecords.bulkAdd(
+            data.investmentRecords.map((r: any) => ({
+              ...r,
+              isSynced: 0,
+              syncTime: 0,
+              syncVersion: 1,
+            }))
+          )
+        }
+      }
       if (data.repeats) await bulkAddCIsDel(db.repeats, data.repeats)
       if (data.budgets) await bulkAddCIsDel(db.budgets, data.budgets)
       if (data.budgetAmounts) await bulkAddCIsDel(db.budgetAmounts, data.budgetAmounts)
@@ -313,14 +344,17 @@ export function BackupScreen() {
 
   const handleExportExcel = async (period: (typeof excelPeriods)[number]) => {
     try {
-      const [txs, cats, asts] = await Promise.all([
+      const [txs, cats, asts, invs, invRecs] = await Promise.all([
         getAllTransactions(),
         getAllCategories(),
         getAllAssets(),
+        db.investments.toArray(),
+        db.investmentRecords.toArray(),
       ])
 
       const catMap = new Map(cats.map((c) => [c.uid, c]))
       const assetMap = new Map(asts.map((a) => [a.uid, a]))
+      const invMap = new Map(invs.map((i) => [i.uid, i.name]))
 
       const filtered = txs.filter((tx) => {
         if (!period.range) return true
@@ -365,10 +399,39 @@ export function BackupScreen() {
         ]
       })
 
+      const filteredInvRecs = invRecs.filter((rec) => {
+        if (!period.range) return true
+        const d = fromIso(rec.date)
+        return d >= period.range.start && d <= period.range.end
+      })
+
+      filteredInvRecs.sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date)
+        return (a.time || '').localeCompare(b.time || '')
+      })
+
+      const invHeading = ['Tanggal', 'Waktu', 'Akun Investasi', 'Jenis', 'Nominal', 'Catatan']
+      const invRows = filteredInvRecs.map((rec) => {
+        const invName = invMap.get(rec.investmentUid) ?? '—'
+        const jenis = rec.type === 'deposit' ? 'Setoran' : 'Hasil Investasi (P&L)'
+        return [
+          rec.date,
+          rec.time || '',
+          invName,
+          jenis,
+          rec.amount,
+          rec.note ?? '',
+        ]
+      })
+
       const html = buildExcelHtml([
         {
           title: `Pengelola Keuangan - ${period.title}`,
           rows: [heading, ...rows],
+        },
+        {
+          title: `Investasi - ${period.title}`,
+          rows: [invHeading, ...invRows],
         },
       ])
 

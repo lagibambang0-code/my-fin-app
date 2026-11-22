@@ -10,6 +10,8 @@ const mockDb = {
   categories: [{ id: 1, uid: 'cat1', NAME: 'Custom Cat' }],
   assets: [{ id: 1, uid: 'ast1', NIC_NAME: 'Custom Bank' }],
   assetGroups: [{ id: 1, uid: 'ag1', ACC_GROUP_NAME: 'Custom Group' }],
+  investments: [{ id: 1, uid: 'inv1', name: 'Bibit' }],
+  investmentRecords: [{ id: 1, uid: 'rec1', amount: 1000 }],
 }
 
 // 1. Test "Reset only transactions" (fa.java case 0, DBInitService.c)
@@ -37,6 +39,8 @@ function resetAllData(db, lang = 'id') {
   db.categories = []
   db.assets = []
   db.assetGroups = []
+  db.investments = []
+  db.investmentRecords = []
 
   // Re-seed default
   db.categories = [
@@ -56,6 +60,8 @@ function resetAllData(db, lang = 'id') {
 
 resetAllData(mockDb, 'id')
 assert.equal(mockDb.transactions.length, 0, 'Transactions must be clean')
+assert.equal(mockDb.investments.length, 0, 'Investments must be cleared')
+assert.equal(mockDb.investmentRecords.length, 0, 'Investment records must be cleared')
 assert.equal(mockDb.categories.length, 2, 'Default categories must be re-seeded')
 assert.equal(mockDb.categories[1].NAME, 'Makanan', 'Language preference must be preserved')
 assert.equal(mockDb.assets.length, 2, 'Default assets must be re-seeded')

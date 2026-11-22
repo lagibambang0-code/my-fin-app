@@ -86,6 +86,8 @@ type NumpadProps = {
    * Passing this activates the 4-column layout.
    */
   showDone?: boolean
+  /** Custom test ID for the Selesai button. Defaults to `${testIdPrefix}done`. */
+  doneTestId?: string
   /** Called when the Selesai button is pressed. */
   onDone?: () => void
 }
@@ -101,6 +103,7 @@ export function Numpad({
   negative = false,
   onMinus,
   showDone,
+  doneTestId,
   onDone,
 }: NumpadProps) {
   // 4-column layout when minus/done buttons are requested.
@@ -170,7 +173,7 @@ export function Numpad({
           <button
             key="done"
             type="button"
-            data-testid={`${testIdPrefix}done`}
+            data-testid={doneTestId ?? `${testIdPrefix}done`}
             aria-label="Selesai"
             onClick={onDone}
             className={cn(
