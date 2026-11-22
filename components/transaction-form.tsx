@@ -825,7 +825,7 @@ export function TransactionForm({
     await setTransactionTags(uid, tagUids)
     if (keepOpen) {
       // Simpan & Lanjut:
-      // Update time to current time for the next transaction, while keeping date, type, asset, and toAsset
+      // Update time to current time for the next transaction, while resetting all input fields
       const now = new Date()
       setTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`)
 
@@ -837,6 +837,8 @@ export function TransactionForm({
       setShowFee(false)
       setCategoryUid(null)
       setCategoryLabel(null)
+      setAssetUid(null)
+      setToAssetUid(null)
       setNote('')
       setDescription('')
       setMark(false)
