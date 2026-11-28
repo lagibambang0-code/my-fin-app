@@ -238,26 +238,23 @@ export function TransactionForm({
   const [keyboardInset, setKeyboardInset] = useState(0)
 
   const scrollToButtons = useCallback(() => {
-    setTimeout(() => {
-      if (actionButtonsRef.current) {
-        actionButtonsRef.current.scrollIntoView({
-          behavior: 'smooth',
-          block: 'end',
-        })
-      } else if (formScrollRef.current) {
-        formScrollRef.current.scrollTo({
-          top: formScrollRef.current.scrollHeight,
-          behavior: 'smooth',
-        })
-      }
-    }, 150)
+    // Langsung instan tanpa animasi scrolling lambat
+    if (actionButtonsRef.current) {
+      actionButtonsRef.current.scrollIntoView({
+        behavior: 'auto',
+        block: 'end',
+      })
+    } else if (formScrollRef.current) {
+      formScrollRef.current.scrollTo({
+        top: formScrollRef.current.scrollHeight,
+        behavior: 'auto',
+      })
+    }
   }, [])
 
   const focusNoteAndScrollDown = useCallback(() => {
-    setTimeout(() => {
-      noteInputRef.current?.focus()
-      scrollToButtons()
-    }, 150)
+    noteInputRef.current?.focus()
+    scrollToButtons()
   }, [scrollToButtons])
 
   useEffect(() => {
@@ -924,7 +921,7 @@ export function TransactionForm({
         style={{
           paddingBottom: keyboardInset > 0 ? `${keyboardInset + 16}px` : undefined,
         }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain transition-[padding] duration-200"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
       >
         <div className="mx-auto w-full max-w-lg space-y-3 px-3.5 py-3">
           <div
@@ -1375,7 +1372,7 @@ export function TransactionForm({
       {activeSheet !== null && (
         <div
           data-testid="trx-unified-drawer"
-          className="z-40 shrink-0 border-t border-border/80 bg-card shadow-2xl transition-all duration-200"
+          className="z-40 shrink-0 border-t border-border/80 bg-card shadow-2xl"
         >
           <div className="mx-auto flex w-full max-w-lg flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {activeSheet === 'numpad' && (
