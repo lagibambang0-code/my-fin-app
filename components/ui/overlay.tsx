@@ -119,11 +119,31 @@ export function FullScreenSheet({
     }
   }, [open])
 
+  // Nonaktifkan viewport resize khusus saat drawer terbuka (interactive-widget=overlays-content)
+  // agar auto-focus pada input tidak menyebabkan drawer mantul atau anjlok saat keyboard muncul/hilang
+  useEffect(() => {
+    if (!open || variant !== 'drawer') return
+    const meta = document.querySelector('meta[name="viewport"]')
+    if (!meta) return
+    const originalContent = meta.getAttribute('content') || ''
+    const overlayContent = originalContent.includes('interactive-widget')
+      ? originalContent.replace(/interactive-widget=[^,]+/, 'interactive-widget=overlays-content')
+      : `${originalContent}, interactive-widget=overlays-content`
+    meta.setAttribute('content', overlayContent)
+
+    return () => {
+      meta.setAttribute('content', originalContent)
+    }
+  }, [open, variant])
+
   if (!open) return null
 
   if (variant === 'drawer') {
     return (
-      <div data-testid={testId} className="fixed inset-0 z-[80] flex flex-col justify-end">
+      <div
+        data-testid={testId}
+        className="fixed top-0 left-0 right-0 h-[100lvh] z-[80] flex flex-col justify-end overflow-hidden"
+      >
         <div
           aria-hidden="true"
           onClick={onClose}
@@ -133,9 +153,9 @@ export function FullScreenSheet({
           role="dialog"
           aria-modal="true"
           className={cn(
-            'relative mx-auto flex h-[93dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] bg-card shadow-2xl',
+            'relative mx-auto flex h-[93lvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] bg-card shadow-2xl',
             'animate-in fade-in slide-in-from-bottom-8 duration-200 ease-out motion-reduce:animate-none',
-            'md:mb-8 md:h-[calc(100dvh-4rem)] md:max-w-3xl md:rounded-[2rem] lg:max-w-5xl',
+            'md:mb-8 md:h-[calc(100lvh-4rem)] md:max-w-3xl md:rounded-[2rem] lg:max-w-5xl',
             className,
           )}
         >
