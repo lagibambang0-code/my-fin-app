@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   AlignLeft,
+  ArrowDownLeft,
   ArrowUpDown,
+  ArrowUpRight,
   Camera,
   Calendar,
   CalendarClock,
@@ -1483,11 +1485,25 @@ export function TransactionForm({
               <div className="flex flex-col max-h-[46vh] sm:max-h-[380px] min-h-[280px] animate-in fade-in duration-150">
                 <PickerView
                   title={
-                    activeSheet === 'asset_to'
-                      ? 'Uang masuk'
-                      : type === 'transfer'
-                      ? 'Uang keluar'
-                      : 'Aset'
+                    type === 'transfer' ? (
+                      activeSheet === 'asset_to' ? (
+                        <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                          <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                            <ArrowDownLeft className="size-3.5 stroke-[2.5]" />
+                          </span>
+                          <span>Uang Masuk</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                          <span className="flex size-5 items-center justify-center rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                            <ArrowUpRight className="size-3.5 stroke-[2.5]" />
+                          </span>
+                          <span>Uang Keluar</span>
+                        </span>
+                      )
+                    ) : (
+                      'Aset'
+                    )
                   }
                   items={assetItems}
                   selected={activeSheet === 'asset_to' ? toAssetUid : assetUid}

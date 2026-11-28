@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, Search, X } from 'lucide-react'
 import { Overlay } from '@/components/ui/overlay'
 import { cn } from '@/lib/utils'
@@ -14,7 +14,8 @@ export type PickerItem = {
 }
 
 export type PickerViewProps = {
-  title: string
+  title: ReactNode
+  subtitle?: ReactNode
   items: PickerItem[]
   selected?: string | null
   onSelect: (value: string) => void
@@ -36,6 +37,7 @@ type PickerSheetProps = PickerViewProps & {
 /** Bottom sheet view for selecting options (can be embedded directly in a shared sheet). */
 export function PickerView({
   title,
+  subtitle,
   items,
   selected,
   onSelect,
@@ -75,8 +77,13 @@ export function PickerView({
   return (
     <div data-testid={testId} className="flex flex-col min-h-0 flex-1">
       {showHeader && (
-        <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-          <h2 className="text-base font-bold">{title}</h2>
+        <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold">{title}</h2>
+            {subtitle && (
+              <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+            )}
+          </div>
           {onClose && (
             <button
               type="button"
@@ -232,7 +239,13 @@ export function PickerSheet({
 }: PickerSheetProps) {
   if (!open) return null
   return (
-    <Overlay open={open} onClose={onClose} align="bottom" testId={testId} label={title}>
+    <Overlay
+      open={open}
+      onClose={onClose}
+      align="bottom"
+      testId={testId}
+      label={typeof title === 'string' ? title : undefined}
+    >
       <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border border-b-0 border-border/80 bg-card pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-md md:rounded-2xl md:border md:pb-0">
         <PickerView
           title={title}
