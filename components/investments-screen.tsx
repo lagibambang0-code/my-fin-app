@@ -33,6 +33,7 @@ type AssetSummaryData = {
   previousValue: number
   diff: number
   diffPercent: number
+  hasPnl: boolean
 }
 
 export function InvestmentsScreen() {
@@ -66,9 +67,13 @@ export function InvestmentsScreen() {
 
         let runningCapital = 0
         let latestPnl = 0
+        let hasPnl = false
         for (const r of records) {
           if (r.type === 'deposit') runningCapital += r.amount
-          else if (r.type === 'pnl') latestPnl = r.amount
+          else if (r.type === 'pnl') {
+            latestPnl = r.amount
+            hasPnl = true
+          }
         }
         const currentValue = runningCapital + latestPnl
         const totalDeposit = runningCapital
@@ -82,6 +87,7 @@ export function InvestmentsScreen() {
           previousValue: totalDeposit,
           diff: pnlAmount,
           diffPercent: pnlPercent,
+          hasPnl,
         })
       }
       setSummaries(sumMap)
@@ -232,6 +238,7 @@ export function InvestmentsScreen() {
                 const diffPct = summary?.diffPercent ?? 0
                 const recordCount = summary?.records.length ?? 0
                 const lastRecord = recordCount > 0 ? summary?.records[recordCount - 1] : null
+                const hasPnl = summary?.hasPnl ?? false
 
                 return (
                   <button
@@ -264,7 +271,7 @@ export function InvestmentsScreen() {
                         {formatCurrency(currentVal, currency)}
                       </span>
 
-                      {recordCount > 0 && lastRecord?.type === 'pnl' ? (
+                      {hasPnl ? (
                         <span
                           className={cn(
                             'inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums',

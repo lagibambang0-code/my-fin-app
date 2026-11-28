@@ -178,6 +178,65 @@ assert.equal(timeline[3].derivedAmount, 22110)
 
 console.log('✓ 6. Editing deposit does NOT corrupt PnL or subsequent entries!')
 
+// 7. Testing Main Investments Screen Card logic (hasPnl vs recordCount display)
+console.log('7. Testing Investment Screen Card logic (hasPnl after multiple deposits)...')
+
+function calculateAssetSummary(records) {
+  let runningCapital = 0
+  let latestPnl = 0
+  let hasPnl = false
+  for (const r of records) {
+    if (r.type === 'deposit') runningCapital += r.amount
+    else if (r.type === 'pnl') {
+      latestPnl = r.amount
+      hasPnl = true
+    }
+  }
+  const currentValue = runningCapital + latestPnl
+  const totalDeposit = runningCapital
+  const pnlAmount = latestPnl
+  const pnlPercent = totalDeposit > 0 ? (pnlAmount / totalDeposit) * 100 : 0
+
+  return {
+    records,
+    currentValue,
+    previousValue: totalDeposit,
+    diff: pnlAmount,
+    diffPercent: pnlPercent,
+    hasPnl,
+  }
+}
+
+// Case A: Hanya Deposit awal
+const summaryDepOnly = calculateAssetSummary([
+  { uid: 'r1', type: 'deposit', amount: 10000 },
+])
+assert.equal(summaryDepOnly.hasPnl, false, 'hasPnl must be false when only deposit exists')
+assert.equal(summaryDepOnly.currentValue, 10000)
+assert.equal(summaryDepOnly.diff, 0)
+
+// Case B: Deposit + PnL
+const summaryWithPnl = calculateAssetSummary([
+  { uid: 'r1', type: 'deposit', amount: 10000 },
+  { uid: 'r2', type: 'pnl', amount: 500 },
+])
+assert.equal(summaryWithPnl.hasPnl, true, 'hasPnl must be true after PnL entry')
+assert.equal(summaryWithPnl.currentValue, 10500)
+assert.equal(summaryWithPnl.diff, 500)
+assert.equal(summaryWithPnl.diffPercent, 5)
+
+// Case C: Deposit 1 + PnL + Deposit 2 (Deposit kedua setelah PnL)
+const summarySecondDeposit = calculateAssetSummary([
+  { uid: 'r1', type: 'deposit', amount: 10000 },
+  { uid: 'r2', type: 'pnl', amount: 500 },
+  { uid: 'r3', type: 'deposit', amount: 5000 },
+])
+assert.equal(summarySecondDeposit.hasPnl, true, 'hasPnl MUST remain true after second deposit!')
+assert.equal(summarySecondDeposit.currentValue, 15500, 'Current value must be 10.000 + 5.000 + 500 = 15.500')
+assert.equal(summarySecondDeposit.diff, 500, 'PnL diff must remain +500')
+assert.equal(summarySecondDeposit.diffPercent.toFixed(3), '3.333', 'PnL percent must be 500/15000 = 3.333%')
+console.log('✓ 7. Card display logic correctly preserves PnL after second deposit!')
+
 console.log('\n=============================================')
 console.log('ALL INVESTMENT PNL MATH TESTS PASSED (100%)!')
 console.log('=============================================')

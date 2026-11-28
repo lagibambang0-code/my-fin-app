@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Calendar, Check, ChevronLeft, ChevronRight, Trash2, TrendingDown, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FullScreenSheet } from '@/components/ui/overlay'
@@ -57,6 +57,7 @@ export function InvestmentRecordSheet({
   onDeleted,
 }: InvestmentRecordSheetProps) {
   const { t } = useTranslation()
+  const amountInputRef = useRef<HTMLInputElement>(null)
   const [date, setDate] = useState(() => todayIso())
   const [time, setTime] = useState(() => {
     const now = new Date()
@@ -73,6 +74,17 @@ export function InvestmentRecordSheet({
 
   const relative = relativeDateLabel(date)
   const weekday = WEEKDAYS_SHORT[fromIso(date).getDay()]
+
+  // Tunda focus sampai animasi drawer selesai (200ms) agar dvh tidak resize
+  // di tengah animasi → mencegah efek "mantul/anjlok" pada drawer
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => {
+      amountInputRef.current?.focus()
+    }, 280)
+    return () => clearTimeout(timer)
+  }, [open])
+
   useEffect(() => {
     if (!open) return
     const now = new Date()
@@ -289,7 +301,7 @@ export function InvestmentRecordSheet({
                   type="text"
                   inputMode="decimal"
                   required
-                  autoFocus
+                  ref={amountInputRef}
                   placeholder="Contoh: 1000000"
                   value={amountText ? formatTypingAmount(amountText, currency) : ''}
                   onChange={(e) => setAmountText(normalizeAmountInput(e.target.value, currency))}
@@ -322,7 +334,7 @@ export function InvestmentRecordSheet({
                   type="text"
                   inputMode="decimal"
                   required
-                  autoFocus
+                  ref={amountInputRef}
                   placeholder="Contoh: 100 atau -50"
                   value={amountText ? formatTypingAmount(amountText, currency) : ''}
                   onChange={(e) => setAmountText(normalizeAmountInput(e.target.value, currency))}

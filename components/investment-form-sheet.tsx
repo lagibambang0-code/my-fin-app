@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronLeft, Link as LinkIcon, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FullScreenSheet } from '@/components/ui/overlay'
@@ -35,6 +35,8 @@ export function InvestmentFormSheet({
   onDeleted,
 }: InvestmentFormSheetProps) {
   const { t } = useTranslation()
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
   const [name, setName] = useState('')
   const [linkedAssetUid, setLinkedAssetUid] = useState<string | null>(null)
   const [currencyUid, setCurrencyUid] = useState('IDR_IDR')
@@ -43,6 +45,16 @@ export function InvestmentFormSheet({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Tunda focus sampai animasi drawer selesai (200ms) agar dvh tidak resize
+  // di tengah animasi → mencegah efek "mantul/anjlok" pada drawer
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => {
+      nameInputRef.current?.focus()
+    }, 280)
+    return () => clearTimeout(timer)
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -141,10 +153,10 @@ export function InvestmentFormSheet({
               {t.investments.assetName}
             </label>
             <input
+              ref={nameInputRef}
               id="inv-name-input"
               type="text"
               required
-              autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t.investments.assetNamePlaceholder}

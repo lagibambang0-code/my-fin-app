@@ -300,6 +300,13 @@ export function TransactionForm({
     }
   }, [keyboardInset, scrollToButtons])
 
+  // Auto-scroll ke tombol simpan/lanjut saat input aset aktif
+  useEffect(() => {
+    if (activeSheet === 'asset_from' || activeSheet === 'asset_to') {
+      scrollToButtons()
+    }
+  }, [activeSheet, scrollToButtons])
+
   const handleSwapAssets = () => {
     const prevFrom = assetUid
     const prevTo = toAssetUid
@@ -934,7 +941,12 @@ export function TransactionForm({
                 data-testid={`trx-type-${option}`}
                 onClick={() => {
                   setType(option)
-                  if (option === 'transfer') setNegative(false)
+                  if (option === 'transfer') {
+                    setNegative(false)
+                    if (activeSheet === 'category') {
+                      setActiveSheet('numpad')
+                    }
+                  }
                 }}
                 className={cn(
                   'rounded-lg px-2 py-1.5 text-xs sm:text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -1359,46 +1371,82 @@ export function TransactionForm({
         </div>
       </div>
 
-      {/* Unified Input Drawer (Single Sheet for Numpad, Kategori & Aset) */}
-      <Overlay
-        open={activeSheet !== null}
-        onClose={() => setActiveSheet(null)}
-        align="bottom"
-        testId="trx-unified-drawer"
-        label="Input transaksi"
-      >
-        <div className="mx-auto flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden rounded-t-[1.75rem] border border-b-0 border-border/80 bg-card pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl md:max-w-lg md:rounded-2xl md:border md:pb-0">
-          {activeSheet === 'numpad' && (
-            <div data-testid="trx-numpad-drawer" className="flex flex-col animate-in fade-in duration-150">
-              <div className="flex items-center justify-between border-b px-4 py-2.5">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Total
-                  </span>
-                  <span className="text-base font-bold text-foreground">
-                    {raw
-                      ? (negative && Number(raw) > 0 ? `-${currencySymbol} ` : `${currencySymbol} `) +
-                        formatTypingAmount(raw, currency)
-                      : `${currencySymbol} 0`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {type === 'transfer' && !showFee && (
-                    <Button
+      {/* Docked Input Panel (Numpad, Kategori & Aset) */}
+      {activeSheet !== null && (
+        <div
+          data-testid="trx-unified-drawer"
+          className="z-40 shrink-0 border-t border-border/80 bg-card shadow-2xl transition-all duration-200"
+        >
+          <div className="mx-auto flex w-full max-w-lg flex-col overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {activeSheet === 'numpad' && (
+              <div data-testid="trx-numpad-drawer" className="flex flex-col animate-in fade-in duration-150">
+                <div className="flex items-center justify-between border-b px-4 py-2.5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Total
+                    </span>
+                    <span className="text-base font-bold text-foreground">
+                      {raw
+                        ? (negative && Number(raw) > 0 ? `-${currencySymbol} ` : `${currencySymbol} `) +
+                          formatTypingAmount(raw, currency)
+                        : `${currencySymbol} 0`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {type === 'transfer' && !showFee && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-testid="trx-fee-button"
+                        onClick={() => {
+                          setShowFee(true)
+                          setActiveSheet('fee')
+                        }}
+                        className="h-7 gap-1 px-2 text-xs font-medium"
+                      >
+                        <Coins className="size-3 text-muted-foreground" />
+                        <span data-testid="trx-quick-fee-btn">+ Biaya</span>
+                      </Button>
+                    )}
+                    <button
                       type="button"
-                      variant="outline"
-                      size="sm"
-                      data-testid="trx-fee-button"
-                      onClick={() => {
-                        setShowFee(true)
-                        setActiveSheet('fee')
-                      }}
-                      className="h-7 gap-1 px-2 text-xs font-medium"
+                      onClick={() => setActiveSheet(null)}
+                      aria-label="Tutup"
+                      className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <Coins className="size-3 text-muted-foreground" />
-                      <span data-testid="trx-quick-fee-btn">+ Biaya</span>
-                    </Button>
-                  )}
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="p-3">
+                  <Numpad
+                    decimals={decimals}
+                    showBackspace={false}
+                    onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
+                    showMinus={type !== 'transfer'}
+                    negative={negative}
+                    onMinus={() => setNegative((n) => !n)}
+                    showDone={true}
+                    onDone={handleNumpadDone}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeSheet === 'fee' && (
+              <div data-testid="trx-fee-sheet" className="flex flex-col animate-in fade-in duration-150">
+                <div className="flex items-center justify-between border-b px-4 py-2.5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t.transaction.fee || 'Biaya Transfer'}
+                    </span>
+                    <span data-testid="trx-fee-sheet-value" className="text-base font-bold text-foreground">
+                      {feeRaw
+                        ? `${currencySymbol} ${formatTypingAmount(feeRaw, currency)}`
+                        : `${currencySymbol} 0`}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setActiveSheet(null)}
@@ -1408,92 +1456,55 @@ export function TransactionForm({
                     <X className="size-4" />
                   </button>
                 </div>
-              </div>
-              <div className="p-3">
-                <Numpad
-                  decimals={decimals}
-                  showBackspace={false}
-                  onKey={(key: NumpadKey) => setRaw((current) => applyNumpadKey(current, key, decimals))}
-                  showMinus={type !== 'transfer'}
-                  negative={negative}
-                  onMinus={() => setNegative((n) => !n)}
-                  showDone={true}
-                  onDone={handleNumpadDone}
-                />
-              </div>
-            </div>
-          )}
-
-          {activeSheet === 'fee' && (
-            <div data-testid="trx-fee-sheet" className="flex flex-col animate-in fade-in duration-150">
-              <div className="flex items-center justify-between border-b px-4 py-2.5">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {t.transaction.fee || 'Biaya Transfer'}
-                  </span>
-                  <span data-testid="trx-fee-sheet-value" className="text-base font-bold text-foreground">
-                    {feeRaw
-                      ? `${currencySymbol} ${formatTypingAmount(feeRaw, currency)}`
-                      : `${currencySymbol} 0`}
-                  </span>
+                <div className="p-3">
+                  <Numpad
+                    decimals={decimals}
+                    showBackspace={false}
+                    onKey={(key: NumpadKey) => setFeeRaw((current) => applyNumpadKey(current, key, decimals))}
+                    testIdPrefix="fee-numpad-"
+                    showMinus={false}
+                    showDone={true}
+                    doneTestId="trx-fee-sheet-done"
+                    onDone={handleFeeDone}
+                  />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  aria-label="Tutup"
-                  className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <X className="size-4" />
-                </button>
               </div>
-              <div className="p-3">
-                <Numpad
-                  decimals={decimals}
-                  showBackspace={false}
-                  onKey={(key: NumpadKey) => setFeeRaw((current) => applyNumpadKey(current, key, decimals))}
-                  testIdPrefix="fee-numpad-"
-                  showMinus={false}
-                  showDone={true}
-                  doneTestId="trx-fee-sheet-done"
-                  onDone={handleFeeDone}
+            )}
+
+            {activeSheet === 'category' && (
+              <div className="flex flex-col max-h-[46vh] sm:max-h-[380px] min-h-[280px] animate-in fade-in duration-150">
+                <CategoryPickerView
+                  type={type === 'income' ? 'income' : 'expense'}
+                  selectedUid={categoryUid}
+                  onSelect={handleCategorySelect}
+                  onClose={() => setActiveSheet(null)}
                 />
               </div>
-            </div>
-          )}
+            )}
 
-          {activeSheet === 'category' && (
-            <div className="flex flex-col min-h-0 flex-1 animate-in fade-in duration-150">
-              <CategoryPickerView
-                type={type === 'income' ? 'income' : 'expense'}
-                selectedUid={categoryUid}
-                onSelect={handleCategorySelect}
-                onClose={() => setActiveSheet(null)}
-              />
-            </div>
-          )}
-
-          {(activeSheet === 'asset_from' || activeSheet === 'asset_to') && (
-            <div className="flex flex-col min-h-0 flex-1 animate-in fade-in duration-150">
-              <PickerView
-                title={
-                  activeSheet === 'asset_to'
-                    ? 'Uang masuk'
-                    : type === 'transfer'
-                    ? 'Uang keluar'
-                    : 'Aset'
-                }
-                items={assetItems}
-                selected={activeSheet === 'asset_to' ? toAssetUid : assetUid}
-                onSelect={handleAssetSelect}
-                onClose={() => setActiveSheet(null)}
-                emptyLabel="Belum ada aset. Tambahkan dari tab Aset."
-                testId="asset-picker"
-                layout="grid"
-              />
-            </div>
-          )}
+            {(activeSheet === 'asset_from' || activeSheet === 'asset_to') && (
+              <div className="flex flex-col max-h-[46vh] sm:max-h-[380px] min-h-[280px] animate-in fade-in duration-150">
+                <PickerView
+                  title={
+                    activeSheet === 'asset_to'
+                      ? 'Uang masuk'
+                      : type === 'transfer'
+                      ? 'Uang keluar'
+                      : 'Aset'
+                  }
+                  items={assetItems}
+                  selected={activeSheet === 'asset_to' ? toAssetUid : assetUid}
+                  onSelect={handleAssetSelect}
+                  onClose={() => setActiveSheet(null)}
+                  emptyLabel="Belum ada aset. Tambahkan dari tab Aset."
+                  testId="asset-picker"
+                  layout="grid"
+                />
+              </div>
+            )}
+          </div>
         </div>
-      </Overlay>
+      )}
 
       <TransactionTagPicker
         open={tagPickerOpen}
